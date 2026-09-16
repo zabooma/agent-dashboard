@@ -1,0 +1,45 @@
+{
+  "name": "@zabooma/agent-dashboard",
+  "version": "0.1.0",
+  "description": "A local, agent-maintained dashboard for parallel issue sessions.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zabooma/agent-dashboard.git"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agents",
+    "dashboard",
+    "claude",
+    "codex",
+    "opencode"
+  ],
+  "type": "module",
+  "bin": {
+    "agent-dashboard": "server.mjs"
+  },
+  "files": [
+    "server.mjs",
+    "lib/",
+    "public/",
+    ".agents/skills/agent-dashboard/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node server.mjs --dashboard",
+    "mcp": "node server.mjs",
+    "dev": "node --watch server.mjs --dashboard",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.24.3",
+    "zod": "^3.25.76"
+  }
+}

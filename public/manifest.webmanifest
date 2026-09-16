@@ -1,0 +1,19 @@
+{
+  "name": "Agent Dashboard",
+  "short_name": "Agents",
+  "description": "A local, agent-maintained dashboard for parallel work sessions.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101714",
+  "theme_color": "#101714",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

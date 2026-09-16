@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101714">
+    <meta name="application-name" content="Agent Dashboard">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Agent Dashboard</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/app-icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/app-icon.svg">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="masthead">
+        <a class="wordmark" href="/" aria-label="Agent Dashboard home">
+          <span class="wordmark-mark" aria-hidden="true">✦</span>
+          <span>AGENT<br>DASHBOARD</span>
+        </a>
+        <section class="signal-strip" aria-label="Session summary">
+          <div><span id="total-count">0</span><small>work sessions</small></div>
+          <div><span id="active-count">0</span><small>agents in motion</small></div>
+          <div class="attention-signal"><span id="attention-count">0</span><small>need an answer</small></div>
+          <p id="board-note">Cards update whenever an agent calls the local MCP server.</p>
+        </section>
+        <div class="clock-block" aria-live="polite">
+          <span class="eyebrow">LOCAL TIME</span>
+          <strong id="clock">--:--</strong>
+          <span id="refresh-state">SYNCING</span>
+        </div>
+        <div class="install-control">
+          <button class="install-button" id="install-button" type="button" hidden>
+            Install dashboard <span aria-hidden="true">↓</span>
+          </button>
+          <span class="install-status" id="install-status" aria-live="polite"></span>
+        </div>
+      </header>
+
+      <section class="board" aria-label="Agent sessions by status">
+        <section class="lane lane--attention" data-lane="attention">
+          <header class="lane-heading"><p>01 / HUMAN SIGNAL</p><h2>Attention</h2><span class="lane-count">0</span></header>
+          <div class="card-stack"></div>
+        </section>
+        <section class="lane lane--active" data-lane="active">
+          <header class="lane-heading"><p>02 / LIVE THREADS</p><h2>Active</h2><span class="lane-count">0</span></header>
+          <div class="card-stack"></div>
+        </section>
+        <section class="lane lane--handoff" data-lane="handoff">
+          <header class="lane-heading"><p>03 / CONTINUITY</p><h2>Handoff</h2><span class="lane-count">0</span></header>
+          <div class="card-stack"></div>
+        </section>
+        <section class="lane lane--done" data-lane="done">
+          <header class="lane-heading"><p>04 / CLOSED LOOP</p><h2>Done</h2><span class="lane-count">0</span></header>
+          <div class="card-stack"></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog class="session-sheet" id="session-sheet" aria-labelledby="sheet-title">
+      <article>
+        <button class="sheet-close" id="sheet-close" aria-label="Close session details">×</button>
+        <p class="eyebrow" id="sheet-kicker">SESSION</p>
+        <h2 id="sheet-title">Session details</h2>
+        <div class="sheet-meta" id="sheet-meta"></div>
+        <p class="sheet-summary" id="sheet-summary"></p>
+        <section class="next-step"><p class="eyebrow">NEXT ACTION</p><strong id="sheet-next-action">No action recorded.</strong></section>
+        <section class="agent-roster"><div><p class="eyebrow">PARTICIPATING AGENTS</p><span id="agent-count"></span></div><ul id="agent-list"></ul></section>
+        <section class="message-log"><div><p class="eyebrow">MESSAGE TRACE</p><span id="message-count"></span></div><ol id="message-list"></ol></section>
+        <a class="open-button" id="sheet-open" href="#">Open session <span aria-hidden="true">↗</span></a>
+      </article>
+    </dialog>
+
+    <dialog class="session-frame" id="session-frame" aria-labelledby="session-frame-title">
+      <header>
+        <div>
+          <p class="eyebrow">LIVE SESSION</p>
+          <strong id="session-frame-title">Agent session</strong>
+        </div>
+        <div class="session-frame-actions">
+          <a id="session-frame-external" href="#" target="_blank" rel="noopener noreferrer">Open in a new tab ↗</a>
+          <button class="sheet-close" id="session-frame-close" type="button" aria-label="Close live session">×</button>
+        </div>
+      </header>
+      <iframe id="session-frame-view" title="Live agent session" referrerpolicy="no-referrer"></iframe>
+    </dialog>
+
+    <template id="session-card-template">
+      <article class="session-card">
+        <button class="card-main" type="button">
+          <div class="card-topline"><span class="status-chip"></span><time></time></div>
+          <p class="issue-label"></p>
+          <h3></h3>
+        </button>
+        <div class="card-details">
+          <p class="summary"></p>
+          <section class="agent-summary" aria-label="Agents and workspace">
+            <p class="agent-summary-label">AGENTS / BRANCH / WORKTREE</p>
+            <ul class="agent-summary-list"></ul>
+          </section>
+        </div>
+        <button class="card-collapse" type="button" aria-expanded="true"><span aria-hidden="true">▾</span><span class="visually-hidden">Collapse card</span></button>
+        <div class="card-footer"><span class="next-action"></span><div class="card-actions"><a class="open-link" href="#">Open ↗</a><button class="delete-session" type="button">Delete</button></div></div>
+      </article>
+    </template>
+
+    <script type="module" src="/app.js?v=2"></script>
+  </body>
+</html>
