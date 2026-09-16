@@ -105,11 +105,31 @@ Known limit: the panel opens the session **tool**, not the specific conversation
 
 A host that spawns the MCP server with `AGENT_DASHBOARD_SESSION_ID` (and optionally `AGENT_DASHBOARD_SESSION_NAME`) gets those values recorded for every agent that registers without them. DSH scrubs `DSH_*` names from MCP children, so a DSH agent passes `providerSessionId` itself — read from `$DSH_SESSION_ID`, never guessed.
 
+## Attention and alerts
+
+A card whose lead agent reports `needs_input`, `blocked`, or `stale` sits in the **Attention** lane. The board also tracks which of those cards the human has actually opened: a card nobody has looked at since it last moved gets an amber rail and a **New** badge, the lane header offers **Mark n seen**, and the unread count rides in the tab title — the only part of the board still visible while another app has the keyboard.
+
+Two facts are kept deliberately apart. A card is *waiting* according to its agents; it is *unread* according to this browser's `localStorage`. Opening a card clears the highlight and nothing else: the card stays in Attention until an agent moves it, so acknowledging can never hide work that is still waiting. The record lives per browser profile and is pruned when cards are deleted.
+
+**Get alerts** in the masthead asks for the browser's notification permission, then shows a desktop notification when a card becomes unread. Three rules keep it from becoming noise:
+
+- **One banner per arrival in Attention.** An agent that posts twice while its card waits has not arrived twice, so the banner is latched until the card leaves the lane or the human acknowledges it.
+- **No banner while the board is the focused window.** The amber card already said it — but the arrival is still latched, so walking away afterwards does not produce a stale banner for something that was on screen.
+- **The banner is actionable.** It carries the card's next action, and clicking it focuses an open board on that card, or opens one at `/?work-session=<id>` if none is running. The service worker's `notificationclick` handler only ever focuses a window on its own origin.
+
+Known limits:
+
+- Alerts need the board open somewhere; there is no push service, so closing the browser closes the alerts. A banner that has to reach a machine with no board running would need either a local native notifier on the server side or Web Push with its own keys.
+- The board polls every five seconds and browsers throttle timers in a hidden tab, so a banner can lag behind the card by up to about a minute.
+- Permission and intent are stored separately: the browser remembers that notifications are allowed, and the board remembers whether the human actually asked for them, so turning alerts off never needs a browser trip.
+
+`public/board-state.js` holds the lane mapping, the unread rule, and the banner latch as pure functions with no DOM, storage, or network access, which is what lets `test/board-state.test.mjs` drive them case by case. The page keeps only the wiring: storage, the badge, and the `Notification` call.
+
 ## Theme
 
 The board ships a light and a dark palette with a **System / Light / Dark** control in the masthead. `System` is stored as an absent key rather than a literal, so a page left on it follows the OS live; an explicit choice pins the page and survives reloads.
 
-The control is a segmented radio group rather than a select, and that is load-bearing twice over. It needs no visible group label — the legend is visually hidden but kept for its accessible name — so it costs no extra row; and at 25px it keeps the stacked tools column (78px) under the signal strip (85px), which is what actually sets the masthead height. A labelled select pushed that column past the strip and grew the masthead. Native radios also give arrow-key traversal for free. The radio values `system`/`light`/`dark` are a contract with the resolver, which only persists the latter two literally; `test/theme.test.mjs` pins them.
+The control is a segmented radio group rather than a select, and that is load-bearing twice over. It needs no visible group label — the legend is visually hidden but kept for its accessible name — so it costs no extra row; and at 25px it keeps the stacked tools column (78px) under the signal strip (85px), which is what actually sets the masthead height. A labelled select pushed that column past the strip and grew the masthead. The **Get alerts** button shares that row for the same reason: a control of its own would add a third row and grow the masthead again. Native radios also give arrow-key traversal for free. The radio values `system`/`light`/`dark` are a contract with the resolver, which only persists the latter two literally; `test/theme.test.mjs` pins them.
 
 The resolved theme is written to `<html data-theme>`. Light is the CSS base and `:root[data-theme='dark']` overrides it — deliberately not a `prefers-color-scheme` media query, because a media query cannot share a declaration block with an attribute selector, which would force the whole dark palette to be written twice.
 

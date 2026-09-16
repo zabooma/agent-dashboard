@@ -1,11 +1,14 @@
-const laneByStatus = {
-  needs_input: 'attention',
-  blocked: 'attention',
-  stale: 'attention',
-  working: 'active',
-  handoff: 'handoff',
-  done: 'done',
-};
+import {
+  acknowledge,
+  acknowledgeAll,
+  isUnread,
+  laneFor,
+  notificationPlan,
+  parseReadState,
+  pruneReadState,
+  serializeReadState,
+  unreadWorkSessions,
+} from './board-state.js';
 
 const demoWorkSessions = [
   {
@@ -38,17 +41,31 @@ const demoWorkSessions = [
   },
 ];
 
+// The two things a human needs to tell apart on this board: a card that is waiting on them, and a
+// card they have not looked at yet. The first is derived from the agent statuses, the second is
+// stored here. Neither is allowed to overwrite the other.
+const READ_STATE_KEY = 'agent-dashboard-read-state';
+const ALERTS_KEY = 'agent-dashboard-alerts';
+
 const state = {
   workSessions: [],
   selected: null,
   demo: new URLSearchParams(location.search).has('demo'),
   deferredInstallPrompt: null,
   collapsedWorkSessionIds: new Set(),
+  readState: parseReadState(null),
+  alerts: false,
+  // Set from a notification click or a `?work-session=` link, consumed by the first load that can
+  // find the card. Held here rather than read from the address bar every poll, which would reopen
+  // the panel over and over.
+  pendingWorkSessionId: new URLSearchParams(location.search).get('work-session'),
 };
 const template = document.querySelector('#session-card-template');
 const sheet = document.querySelector('#session-sheet');
 const installButton = document.querySelector('#install-button');
 const installStatus = document.querySelector('#install-status');
+const alertButton = document.querySelector('#alert-button');
+const attentionAck = document.querySelector('#attention-ack');
 const sessionFrame = document.querySelector('#session-frame');
 const sessionFrameTitle = document.querySelector('#session-frame-title');
 const sessionFrameExternal = document.querySelector('#session-frame-external');
@@ -158,7 +175,155 @@ function setCardCollapsed(card, collapseButton, collapsed) {
   collapseButton.title = collapsed ? 'Expand card' : 'Collapse card';
 }
 
-function createCard(workSession) {
+function storedReadState() {
+  try {
+    return parseReadState(localStorage.getItem(READ_STATE_KEY));
+  } catch (error) {
+    // Storage can be blocked outright; the board still works, it just forgets what was read.
+    return parseReadState(null);
+  }
+}
+
+function persistReadState() {
+  try {
+    localStorage.setItem(READ_STATE_KEY, serializeReadState(state.readState));
+  } catch (error) {
+    // Nothing to do: the highlight is still correct for this page view.
+  }
+}
+
+function storeValue(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (error) {
+    return null;
+  }
+}
+
+function setStoreValue(key, value) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch (error) {
+    // The preference applies to this page view only.
+  }
+}
+
+function notificationsAvailable() {
+  return typeof window.Notification === 'function';
+}
+
+function notificationPermission() {
+  return notificationsAvailable() ? window.Notification.permission : 'denied';
+}
+
+// Permission and intent are separate: the browser remembers the permission, the board remembers
+// whether the human actually wants banners. Turning alerts off must not need a browser trip.
+function alertsWanted() {
+  return storeValue(ALERTS_KEY) === 'on' && notificationPermission() === 'granted';
+}
+
+function refreshAlertControl() {
+  if (!notificationsAvailable()) {
+    alertButton.hidden = true;
+    return;
+  }
+  alertButton.hidden = false;
+  const permission = notificationPermission();
+  if (permission === 'denied') {
+    alertButton.disabled = true;
+    alertButton.textContent = 'Alerts blocked';
+    alertButton.title = 'This browser is blocking notifications for the board. Allow them in the site settings, then reload.';
+    alertButton.removeAttribute('aria-pressed');
+    return;
+  }
+  alertButton.disabled = false;
+  alertButton.setAttribute('aria-pressed', String(state.alerts));
+  alertButton.textContent = state.alerts ? 'Alerts on' : 'Get alerts';
+  alertButton.title = state.alerts
+    ? 'Stop desktop notifications for cards that land in Attention'
+    : 'Show a desktop notification when a card lands in Attention';
+}
+
+async function toggleAlerts() {
+  if (state.alerts) {
+    state.alerts = false;
+    setStoreValue(ALERTS_KEY, null);
+    refreshAlertControl();
+    return;
+  }
+  if (notificationPermission() !== 'granted') {
+    const permission = await window.Notification.requestPermission();
+    if (permission !== 'granted') {
+      refreshAlertControl();
+      if (permission === 'denied') alertButton.title = 'This browser is blocking notifications for the board.';
+      return;
+    }
+  }
+  state.alerts = true;
+  setStoreValue(ALERTS_KEY, 'on');
+  refreshAlertControl();
+}
+
+// A banner is only worth the interruption if the human is looking at something else. When the board
+// is the focused window, the new highlight has already said it — and the card is latched either way,
+// so walking away afterwards does not produce a stale banner for something already on screen.
+async function showAttentionNotification(workSession) {
+  const title = `${statusLabel(workSession.status)} · ${workSession.title}`;
+  const options = {
+    body: workSession.nextAction ?? workSession.summary ?? 'This card is waiting on you.',
+    tag: `agent-dashboard-${workSession.id}`,
+    data: { workSessionId: workSession.id },
+    icon: '/app-icon.svg',
+    badge: '/app-icon.svg',
+  };
+  try {
+    const registration = await navigator.serviceWorker?.getRegistration();
+    if (registration) {
+      await registration.showNotification(title, options);
+      return;
+    }
+    const notification = new window.Notification(title, options);
+    notification.onclick = () => { window.focus(); focusWorkSession(workSession.id); };
+  } catch (error) {
+    // A refused banner is not a board failure; the card keeps its highlight in the lane.
+  }
+}
+
+// Opening a card is the acknowledgement gesture. The card stays in Attention, because "I have seen
+// this" and "this still needs me" are different facts, and only the second one clears the highlight.
+function markSeen(workSession) {
+  if (!isUnread(state.readState, workSession)) return false;
+  state.readState = acknowledge(state.readState, workSession);
+  persistReadState();
+  return true;
+}
+
+function focusWorkSession(workSessionId) {
+  const workSession = state.workSessions.find((candidate) => candidate.id === workSessionId);
+  if (workSession) showWorkSession(workSession);
+}
+
+// Runs after every successful load: forget records for cards that no longer exist, take the
+// notification latch, then repaint. Taking the latch whether or not a banner is shown is what keeps
+// the banner to one per arrival in Attention.
+function afterLoad() {
+  const before = serializeReadState(state.readState);
+  state.readState = pruneReadState(state.readState, state.workSessions);
+  const plan = notificationPlan(state.readState, state.workSessions);
+  state.readState = plan.readState;
+  if (serializeReadState(state.readState) !== before) persistReadState();
+  render();
+  if (state.pendingWorkSessionId) {
+    const target = state.pendingWorkSessionId;
+    state.pendingWorkSessionId = null;
+    focusWorkSession(target);
+  }
+  if (state.demo || !state.alerts || document.hasFocus()) return;
+  plan.send.forEach((workSession) => void showAttentionNotification(workSession));
+}
+
+function createCard(workSession, unread) {
   const fragment = template.content.cloneNode(true);
   const card = fragment.querySelector('.session-card');
   const main = fragment.querySelector('.card-main');
@@ -167,6 +332,8 @@ function createCard(workSession) {
   const chip = fragment.querySelector('.status-chip');
   chip.dataset.status = workSession.status;
   chip.textContent = statusLabel(workSession.status);
+  fragment.querySelector('.new-badge').hidden = !unread;
+  card.classList.toggle('is-new', unread);
   fragment.querySelector('time').textContent = relativeTime(workSession.updatedAt);
   fragment.querySelector('.issue-label').textContent = `${issueLabel(workSession)} · ${workSession.project ?? 'local'}`;
   fragment.querySelector('h3').textContent = workSession.title;
@@ -231,8 +398,9 @@ function addEmptyState(lane, text) {
 
 function render() {
   clearLanes();
+  const unread = new Set(unreadWorkSessions(state.readState, state.workSessions).map((workSession) => workSession.id));
   const sessionsByLane = new Map([...document.querySelectorAll('.lane')].map((lane) => [lane.dataset.lane, []]));
-  state.workSessions.forEach((workSession) => sessionsByLane.get(laneByStatus[workSession.status] ?? 'attention').push(workSession));
+  state.workSessions.forEach((workSession) => sessionsByLane.get(laneFor(workSession.status)).push(workSession));
   sessionsByLane.forEach((workSessions, laneName) => {
     const lane = document.querySelector(`[data-lane="${laneName}"]`);
     lane.querySelector('.lane-count').textContent = workSessions.length;
@@ -240,16 +408,23 @@ function render() {
       addEmptyState(lane, laneName === 'attention' ? 'Nothing is waiting on you.' : 'No work sessions in this lane.');
       return;
     }
-    workSessions.forEach((workSession) => lane.querySelector('.card-stack').append(createCard(workSession)));
+    workSessions.forEach((workSession) => lane.querySelector('.card-stack').append(createCard(workSession, unread.has(workSession.id))));
   });
   const agents = state.workSessions.flatMap((workSession) => workSession.agents);
-  const attention = state.workSessions.filter((workSession) => laneByStatus[workSession.status] === 'attention').length;
+  const attention = state.workSessions.filter((workSession) => laneFor(workSession.status) === 'attention').length;
   document.querySelector('#total-count').textContent = state.workSessions.length;
   document.querySelector('#active-count').textContent = agents.filter((agent) => agent.status === 'working').length;
   document.querySelector('#attention-count').textContent = attention;
+  // The tab is the only part of the board visible while another app has focus, so the unread count
+  // rides in the title as well as on the cards.
+  document.title = unread.size ? `(${unread.size}) Agent Dashboard` : 'Agent Dashboard';
+  attentionAck.hidden = unread.size === 0;
+  attentionAck.textContent = `Mark ${unread.size} seen`;
   document.querySelector('#board-note').textContent = state.demo
     ? 'Preview mode — these cards are illustrative only.'
-    : attention ? 'An amber card means at least one agent is waiting on your judgment.' : 'The board is quiet. Agents will surface exceptions here.';
+    : unread.size
+      ? `${unread.size} card${unread.size === 1 ? '' : 's'} arrived since you last looked.`
+      : attention ? 'An amber card means at least one agent is waiting on your judgment.' : 'The board is quiet. Agents will surface exceptions here.';
 }
 
 function allMessages(workSession) {
@@ -259,6 +434,9 @@ function allMessages(workSession) {
 
 function showWorkSession(workSession) {
   state.selected = workSession;
+  // Reading a card is what clears its highlight; the card itself stays in Attention until an agent
+  // moves it, so acknowledging can never hide work that is still waiting.
+  if (markSeen(workSession)) render();
   document.querySelector('#sheet-kicker').textContent = `${issueLabel(workSession)} / ${statusLabel(workSession.status).toUpperCase()}`;
   document.querySelector('#sheet-title').textContent = workSession.title;
   const meta = document.querySelector('#sheet-meta');
@@ -310,7 +488,7 @@ async function loadWorkSessions() {
   if (state.demo) {
     state.workSessions = demoWorkSessions;
     document.querySelector('#refresh-state').textContent = 'PREVIEW';
-    render();
+    afterLoad();
     return;
   }
   try {
@@ -319,7 +497,7 @@ async function loadWorkSessions() {
     const payload = await response.json();
     state.workSessions = payload.workSessions;
     document.querySelector('#refresh-state').textContent = 'LIVE';
-    render();
+    afterLoad();
   } catch {
     document.querySelector('#refresh-state').textContent = 'OFFLINE';
     document.querySelector('#board-note').textContent = 'The local dashboard process is not responding.';
@@ -414,7 +592,18 @@ if ('serviceWorker' in navigator) {
       setInstallStatus('Offline support unavailable');
     });
   });
+  // A banner click focuses the board in the worker; which card it was about arrives here.
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'open-work-session') focusWorkSession(event.data.workSessionId);
+  });
 }
+
+alertButton.addEventListener('click', () => void toggleAlerts());
+attentionAck.addEventListener('click', () => {
+  state.readState = acknowledgeAll(state.readState, state.workSessions);
+  persistReadState();
+  render();
+});
 
 document.querySelector('#sheet-close').addEventListener('click', () => sheet.close());
 sheet.addEventListener('click', (event) => { if (event.target === sheet) sheet.close(); });
@@ -424,6 +613,9 @@ sessionFrame.addEventListener('click', (event) => { if (event.target === session
 sessionFrame.addEventListener('close', () => sessionFrameView.removeAttribute('src'));
 updateClock();
 applyTheme(storedThemeMode());
+state.readState = storedReadState();
+state.alerts = alertsWanted();
+refreshAlertControl();
 void loadWorkSessions();
 setInterval(updateClock, 1_000);
 if (!state.demo) setInterval(() => void loadWorkSessions(), 5_000);

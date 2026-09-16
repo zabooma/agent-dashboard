@@ -443,6 +443,7 @@ async function handleHttp(request, response) {
     }
     if (requestUrl.pathname === '/') return serveStatic(response, 'index.html', 'text/html; charset=utf-8');
     if (requestUrl.pathname === '/app.js') return serveStatic(response, 'app.js', 'text/javascript; charset=utf-8');
+    if (requestUrl.pathname === '/board-state.js') return serveStatic(response, 'board-state.js', 'text/javascript; charset=utf-8');
     if (requestUrl.pathname === '/styles.css') return serveStatic(response, 'styles.css', 'text/css; charset=utf-8');
     if (requestUrl.pathname === '/manifest.webmanifest') return serveStatic(response, 'manifest.webmanifest', 'application/manifest+json; charset=utf-8');
     if (requestUrl.pathname === '/service-worker.js') return serveStatic(response, 'service-worker.js', 'text/javascript; charset=utf-8');

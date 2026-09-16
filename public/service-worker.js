@@ -1,7 +1,8 @@
-const CACHE_NAME = 'agent-dashboard-shell-v5';
+const CACHE_NAME = 'agent-dashboard-shell-v6';
 const APP_SHELL = [
   '/',
   '/app.js',
+  '/board-state.js',
   '/styles.css',
   '/manifest.webmanifest',
   '/app-icon.svg',
@@ -41,5 +42,24 @@ self.addEventListener('fetch', (event) => {
     } catch {
       return (await caches.match(event.request)) ?? new Response('Offline', { status: 503, statusText: 'Offline' });
     }
+  })());
+});
+
+// A banner is only worth showing if it takes the human to the card it is about. An already-open
+// board is focused and told which card to reveal; otherwise the id rides the URL, so a board that
+// has to start cold still lands on it.
+self.addEventListener('notificationclick', (event) => {
+  const workSessionId = event.notification?.data?.workSessionId ?? null;
+  event.notification?.close();
+  event.waitUntil((async () => {
+    const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const board = windowClients.find((client) => new URL(client.url).origin === self.location.origin);
+    if (board) {
+      await board.focus();
+      board.postMessage({ type: 'open-work-session', workSessionId });
+      return;
+    }
+    const target = workSessionId ? `/?work-session=${encodeURIComponent(workSessionId)}` : '/';
+    await self.clients.openWindow(target);
   })());
 });

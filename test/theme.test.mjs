@@ -6,7 +6,8 @@ import vm from 'node:vm';
 const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
 
-// The boot script is the only inline <script> in the document; the other one is the deferred module.
+// The boot script is the first inline <script> in the document; the others are the deferred module
+// and the board watchdog, neither of which can run before the stylesheet is requested.
 const bootScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 
 // Loads the real boot script with just the globals it touches, so a resolution case can be driven

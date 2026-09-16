@@ -44,12 +44,15 @@
           <span id="refresh-state">SYNCING</span>
         </div>
         <div class="masthead-tools">
-          <fieldset class="theme-switch">
-            <legend class="visually-hidden">Theme</legend>
-            <label><input type="radio" name="theme" value="system" checked><span>System</span></label>
-            <label><input type="radio" name="theme" value="light"><span>Light</span></label>
-            <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
-          </fieldset>
+          <div class="tool-row">
+            <fieldset class="theme-switch">
+              <legend class="visually-hidden">Theme</legend>
+              <label><input type="radio" name="theme" value="system" checked><span>System</span></label>
+              <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+              <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+            </fieldset>
+            <button class="alert-button" id="alert-button" type="button" hidden>Get alerts</button>
+          </div>
           <div class="install-control">
             <button class="install-button" id="install-button" type="button" hidden>
               Install dashboard <span aria-hidden="true">↓</span>
@@ -61,7 +64,10 @@
 
       <section class="board" aria-label="Agent sessions by status">
         <section class="lane lane--attention" data-lane="attention">
-          <header class="lane-heading"><p>01 / HUMAN SIGNAL</p><h2>Attention</h2><span class="lane-count">0</span></header>
+          <header class="lane-heading">
+            <p>01 / HUMAN SIGNAL</p><h2>Attention</h2><span class="lane-count">0</span>
+            <button class="lane-ack" id="attention-ack" type="button" hidden>Mark seen</button>
+          </header>
           <div class="card-stack"></div>
         </section>
         <section class="lane lane--active" data-lane="active">
@@ -110,7 +116,7 @@
     <template id="session-card-template">
       <article class="session-card">
         <button class="card-main" type="button">
-          <div class="card-topline"><span class="status-chip"></span><time></time></div>
+          <div class="card-topline"><div class="card-flags"><span class="status-chip"></span><span class="new-badge" hidden>New</span></div><time></time></div>
           <p class="issue-label"></p>
           <h3></h3>
         </button>
@@ -126,6 +132,21 @@
       </article>
     </template>
 
-    <script type="module" src="/app.js?v=3"></script>
+    <script type="module" src="/app.js?v=4"></script>
+    <script>
+      // Every card is drawn by the module above, so if that module never runs — a missing file, a
+      // syntax error, or a dashboard process older than this page — the lanes stay empty and all the
+      // counters stay at zero. That is indistinguishable from a board with no work on it, and it has
+      // already been mistaken for lost cards. The first load always stamps #refresh-state (LIVE,
+      // OFFLINE, or PREVIEW), so a marker still reading SYNCING means the script never started.
+      window.setTimeout(() => {
+        const refreshState = document.querySelector('#refresh-state');
+        if (!refreshState || refreshState.textContent !== 'SYNCING') return;
+        refreshState.textContent = 'SCRIPT FAILED';
+        refreshState.dataset.status = 'failed';
+        const boardNote = document.querySelector('#board-note');
+        if (boardNote) boardNote.textContent = 'The board could not start its page script. Nothing is lost — the cards are still on disk. If you just updated the dashboard, its process is older than this page: restart it, then reload.';
+      }, 6000);
+    </script>
   </body>
 </html>

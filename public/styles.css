@@ -93,6 +93,8 @@ button { cursor: pointer; }
 .clock-block { min-width: 126px; text-align: right; }
 .clock-block strong { display: block; font: 500 32px/.9 var(--font-mono); letter-spacing: -.08em; }
 .clock-block span:last-child { color: var(--accent); font: 700 10px/1 var(--font-mono); letter-spacing: .1em; }
+/* The board could not draw itself; the accent green would read as healthy. */
+.clock-block span[data-status='failed'] { color: var(--amber); }
 .masthead-tools { display: grid; justify-items: end; gap: 8px; }
 /* A segmented radio group instead of a select: it needs no visible group label, and it is short
    enough that the tools column stays under the signal strip, which is what sets the masthead
@@ -106,6 +108,14 @@ button { cursor: pointer; }
 .theme-switch label:hover span { color: var(--accent); }
 .theme-switch input:checked + span { color: var(--bg); background: var(--accent); }
 .theme-switch input:focus-visible + span { outline: 1px solid var(--accent); outline-offset: 1px; }
+/* The alerts toggle shares the theme row rather than taking one of its own: the stacked tools column
+   is deliberately kept under the signal strip, which is what sets the masthead height. */
+.tool-row { display: flex; align-items: center; gap: 8px; }
+.alert-button { height: 23px; padding: 0 7px; border: 1px solid var(--line); color: var(--muted); background: transparent; font: 700 9px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+.alert-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.alert-button[aria-pressed='true'] { border-color: var(--accent); color: var(--bg); background: var(--accent); }
+.alert-button:disabled { cursor: default; opacity: .7; }
+.alert-button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .install-control { display: grid; justify-items: end; gap: 5px; min-width: 154px; }
 .install-button { padding: 9px 11px; border: 1px solid var(--accent); color: var(--accent); background: transparent; font: 700 10px/1 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; transition: background .15s ease, color .15s ease; }
 .install-button:hover:not(:disabled) { color: var(--bg); background: var(--accent); }
@@ -134,15 +144,30 @@ button { cursor: pointer; }
 .lane--active .lane-heading h2 { color: var(--accent); }
 .lane--handoff .lane-heading h2 { color: var(--purple); }
 .lane--done .lane-heading h2 { color: var(--blue); }
+/* Only ever shown when the lane holds something the human has not opened yet. */
+.lane-ack { margin-top: 11px; padding: 6px 8px; border: 1px solid var(--amber); color: var(--amber); background: transparent; font: 700 9px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+.lane-ack:hover { color: var(--bg); background: var(--amber); }
+.lane-ack:focus-visible { outline: 1px solid var(--amber); outline-offset: 2px; }
 .card-stack { display: grid; gap: 10px; padding: 10px; }
 
 .session-card { position: relative; overflow: hidden; border: 1px solid var(--line-strong); background: var(--surface-card); box-shadow: 4px 4px 0 var(--shadow-card); transition: transform .16s ease, border-color .16s ease; }
+/* A card that arrived in Attention since the human last opened it. The rail is drawn rather than
+   bordered so the card keeps its box, and it stays behind the hover feedback below. */
+.session-card.is-new { border-color: var(--amber); }
+.session-card.is-new::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; pointer-events: none; background: var(--amber); }
 .session-card:hover { transform: translate(-2px, -2px); border-color: var(--accent); }
 .card-main { display: block; width: 100%; padding: 15px 48px 0 15px; border: 0; color: inherit; text-align: left; background: transparent; }
 .card-details { padding: 0 15px 15px; }
 .card-topline { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.card-flags { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .status-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 0 7px; border: 1px solid currentColor; color: var(--accent); font: 700 10px/1 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; }
 .status-chip::before { content: ''; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: currentColor; }
+.new-badge { display: inline-flex; align-items: center; gap: 5px; min-height: 20px; padding: 0 7px; color: var(--bg); background: var(--amber); font: 700 10px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+/* `hidden` cannot win against the display above, so the badge states its own off state. */
+.new-badge[hidden] { display: none; }
+.new-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: new-pulse 1.8s ease-in-out infinite; }
+@keyframes new-pulse { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .new-badge::before { animation: none; } }
 .status-chip[data-status='needs_input'], .status-chip[data-status='blocked'], .status-chip[data-status='stale'] { color: var(--amber); }
 .status-chip[data-status='blocked'] { color: var(--red); }
 .status-chip[data-status='handoff'] { color: var(--purple); }

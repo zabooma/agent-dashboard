@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -22,7 +22,10 @@ async function availablePort() {
 }
 
 async function waitForHealth(baseUrl) {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  // Generous on purpose: the budget is for a server that never binds, not for a busy machine. A node
+  // process importing this project's dependencies took over a second to listen at load average 32,
+  // which failed every spawning test for a reason that had nothing to do with the code under test.
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     try {
       const response = await fetch(`${baseUrl}/api/health`);
       if (response.ok) return;
@@ -81,6 +84,31 @@ test('the local dashboard deletes exactly the selected work session', async () =
     await rm(directory, { recursive: true, force: true });
   }
 });
+// app.js imports a sibling module, which the browser fetches as its own request. A missing static
+// route or a missing shell entry fails only at runtime, in the page, as an unresolved import.
+test('every module the board imports is served and precached', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'agent-dashboard-http-'));
+  const { child, baseUrl } = await startDashboard(path.join(directory, 'dashboard.json'));
+
+  try {
+    const appSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+    const shell = await readFile(new URL('../public/service-worker.js', import.meta.url), 'utf8');
+    const specifiers = [...appSource.matchAll(/from\s+'(\.[^']+)'/g)].map((match) => match[1]);
+    assert.ok(specifiers.length > 0, 'app.js should import its board rules from a module');
+
+    for (const specifier of specifiers) {
+      const modulePath = `/${specifier.replace(/^\.\//, '')}`;
+      const response = await fetch(`${baseUrl}${modulePath}`);
+      assert.equal(response.status, 200, `${modulePath} must be served to the browser`);
+      assert.match(response.headers.get('content-type'), /javascript/, `${modulePath} must be served as a module`);
+      assert.match(shell, new RegExp(`'${modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`), `${modulePath} must be in the offline shell`);
+    }
+  } finally {
+    await stopDashboard(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('the open fallback lists the saved session reference with copy controls', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'agent-dashboard-open-'));
   const dataPath = path.join(directory, 'dashboard.json');
