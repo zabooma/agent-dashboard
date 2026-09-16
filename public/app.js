@@ -1,6 +1,7 @@
 import {
   acknowledge,
   acknowledgeAll,
+  isStalled,
   isUnread,
   laneFor,
   notificationPlan,
@@ -20,6 +21,14 @@ const demoWorkSessions = [
       { id: 'demo-codex-implementer', name: 'Codex / geometry pass', provider: 'codex', role: 'implementer', providerSessionId: 'codex-demo-789', sessionUrl: null, status: 'working', summary: 'Focused fixture passes. Inspecting the live toolpath trace.', nextAction: 'Compare the next geometry trace.', createdAt: '2026-09-15T22:00:00.000Z', updatedAt: new Date(Date.now() - 6 * 60_000).toISOString(), messages: [{ id: 'demo-message-1', kind: 'progress', author: 'Codex / geometry pass', text: 'Registered the isolated worktree and chose a focused regression fixture.', createdAt: '2026-09-15T22:05:00.000Z' }] },
       { id: 'demo-claude-reviewer', name: 'Claude / review pass', provider: 'claude', role: 'reviewer', providerSessionId: 'claude-demo-789', sessionUrl: null, status: 'working', summary: 'Reading the current contract without touching the implementation.', nextAction: 'Review the proposed transition after the trace lands.', createdAt: '2026-09-15T22:08:00.000Z', updatedAt: new Date(Date.now() - 3 * 60_000).toISOString(), messages: [{ id: 'demo-message-2', kind: 'review', author: 'Claude / review pass', text: 'The transition seam needs a live-output assertion, not a snapshot-only test.', createdAt: '2026-09-15T22:12:00.000Z' }] },
     ],
+  },
+  {
+    id: 'demo-stalled', title: 'Flaky fixture: reruns that stopped mid-command', issueNumber: 791,
+    issueUrl: null, project: 'PureCutCNC', worktree: '/Projects/worktrees/purecutcnc/issue-791-flaky-fixture', branch: 'fix/issue-791-flaky-fixture',
+    status: 'working', summary: 'The implementer logged seven reruns of the same fixture and then went quiet mid-command. Silence is what a hit context limit looks like from the board; nothing here proves it was one.',
+    nextAction: 'Check the session — resume it, or take the fixture over in a fresh one.',
+    createdAt: '2026-09-15T21:30:00.000Z', updatedAt: new Date(Date.now() - 24 * 60_000).toISOString(),
+    agents: [{ id: 'demo-codex-stalled', name: 'Codex / fixture reruns', provider: 'codex', role: 'implementer', providerSessionId: 'codex-demo-791', sessionUrl: null, status: 'working', summary: 'Seven reruns, the same failure, then no further update.', nextAction: 'Resume the rerun loop or hand the fixture over.', createdAt: '2026-09-15T21:30:00.000Z', updatedAt: new Date(Date.now() - 24 * 60_000).toISOString(), messages: [{ id: 'demo-message-5', kind: 'progress', author: 'Codex / fixture reruns', text: 'Rerun 7 failed identically. Capturing the seed and the toolpath dump next.', createdAt: '2026-09-15T21:34:00.000Z' }] }],
   },
   {
     id: 'demo-close-flow', title: 'Desktop close flow: confirm the unsaved-work prompt', issueNumber: null,
@@ -334,6 +343,15 @@ function createCard(workSession, unread) {
   chip.textContent = statusLabel(workSession.status);
   fragment.querySelector('.new-badge').hidden = !unread;
   card.classList.toggle('is-new', unread);
+  // Derived from silence rather than declared, so it is advisory and never moves the card: the lane
+  // below is chosen from the status alone. The title deliberately states no threshold — a number
+  // written here would drift away from STALL_AFTER_MS the first time someone tunes it.
+  const stalled = isStalled(workSession);
+  const stallChip = fragment.querySelector('.stall-chip');
+  stallChip.hidden = !stalled;
+  if (stalled) {
+    stallChip.title = 'Still reporting working, but no agent has updated this card for a while. The session may have hit a limit or been stopped.';
+  }
   fragment.querySelector('time').textContent = relativeTime(workSession.updatedAt);
   fragment.querySelector('.issue-label').textContent = `${issueLabel(workSession)} · ${workSession.project ?? 'local'}`;
   fragment.querySelector('h3').textContent = workSession.title;

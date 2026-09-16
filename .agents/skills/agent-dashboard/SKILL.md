@@ -46,6 +46,15 @@ Use `update_agent_progress` when one of these changes becomes true:
 
 Use a short `summary` describing the current situation and a concrete `nextAction` when work remains. Use `add_message` for a short question, blocker, review finding, milestone, or handoff note. Do not report tool-by-tool progress, routine file reads, or unchanged polling.
 
+## Do not go quiet for long
+
+Two rules keep the board's own flags honest. Neither is progress chatter:
+
+- **Announce a long silent step.** If a step you are about to run will stop you reporting for more than about ten minutes — a full test sweep, a large scaffold, a long build, a batch migration — post one short `note` first saying what is running and roughly how long it should take, and update again when it lands. The board cannot see your process, so a card whose agent still reports `working` and has not been touched for **15 minutes** is flagged **Stalled** on the board: from outside, a hit context limit and a long build look identical.
+- **Say `stale` when you know you are stuck.** Still running but making no progress — a retry loop, a wait you cannot shorten, a failing approach you cannot abandon yet — report `status: stale` yourself. An agent-declared `stale` lands in the human's **Attention** lane, where an inferred stall only earns a chip in Active. Declaring it is louder and more honest than going quiet.
+
+The aim is not more updates. A heartbeat before a long step is what makes silence *mean* something: if agents report during long runs, a Stalled chip becomes evidence of a dead session rather than a guess about a busy one. If a single blocking command gives you no chance to report mid-step, announce it beforehand — that is exactly the case the announcement is for.
+
 ## Protect resumability
 
 Before a natural context boundary, a risky experiment, or a likely token-limit boundary, record a `handoff` with the current summary, the exact next action, and a short `add_message` explaining what a fresh session needs to do. Keep the original agent registered; the successor is a separate agent session with its own role and session reference.

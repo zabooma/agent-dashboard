@@ -2,9 +2,10 @@
 // network, so the decisions that are easy to get wrong — which cards count as new, and which of them
 // deserve one desktop banner — can be driven case by case from node.
 //
-// Two facts are deliberately kept apart:
+// Three facts are deliberately kept apart:
 //   * "this card is waiting on a human" lives in the work session's status (the Attention lane);
-//   * "the human has not looked at this one yet" lives in the read state below.
+//   * "the human has not looked at this one yet" lives in the read state below;
+//   * "this card has gone quiet" is derived from elapsed time by `isStalled`, and is advisory only.
 // A card the human just read is still asking for something until it actually moves.
 
 // Statuses that put a card in the human's lane. The page, the lane headings, and the banner rule all
@@ -22,6 +23,23 @@ export const ATTENTION_LANE = 'attention';
 
 export function laneFor(status) {
   return laneByStatus[status] ?? ATTENTION_LANE;
+}
+
+// A card can also be stuck without saying so. The board cannot see a provider process — there is no
+// heartbeat in the model — so the only honest signal is silence: an agent that hits a context or
+// usage limit stops writing and, by definition, cannot report that afterwards. Fifteen minutes is
+// long enough to outlast a build or a test run and short enough to intervene.
+export const STALL_AFTER_MS = 15 * 60_000;
+
+// Only a card that still claims to be working can be stalled: one already in Attention, Handoff, or
+// Done has said what it wants, and re-flagging it would be noise. This never moves a card between
+// lanes. A heuristic that could promote a card to Attention would collapse "the agent says it needs
+// you" into "the agent has not typed for a while", and Attention is the lane the human trusts.
+export function isStalled(workSession, now = Date.now()) {
+  if (workSession.status !== 'working') return false;
+  const updatedAt = Date.parse(workSession.updatedAt ?? '');
+  if (Number.isNaN(updatedAt)) return false;
+  return now - updatedAt >= STALL_AFTER_MS;
 }
 
 export function emptyReadState() {

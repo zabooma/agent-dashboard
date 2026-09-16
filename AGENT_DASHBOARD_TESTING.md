@@ -12,4 +12,6 @@ This is mandatory even for small tasks. Do not wait for the user to remind you, 
 
 Before a long exploration, risky experiment, or likely context-limit boundary, record a `handoff` with the exact next action and a short `add_message`. A session that reaches its limit cannot create its own handoff afterward.
 
+A long silent step needs a heartbeat. If a step will stop you reporting for more than about ten minutes — a full test sweep, a long build, a large scaffold — post one short `note` before it starts and update again when it lands. The board flags a card that still reports `working` after **15 minutes** without an update, and it cannot tell a long build from a session that died. If you are running but stuck, report `status: stale` yourself; that reaches the Attention lane, where an inferred stall only earns a chip in Active.
+
 Use the portable [Agent Dashboard skill](.agents/skills/agent-dashboard/SKILL.md) for the complete protocol. Agents may never delete dashboard cards; that remains a human action.

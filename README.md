@@ -127,6 +127,31 @@ Known limits:
 
 `public/board-state.js` holds the lane mapping, the unread rule, and the banner latch as pure functions with no DOM, storage, or network access, which is what lets `test/board-state.test.mjs` drive them case by case. The page keeps only the wiring: storage, the badge, and the `Notification` call.
 
+## Stalled cards
+
+An agent that hits a context or usage limit, or that is stopped mid-command, cannot report anything afterwards — the card it was working on keeps saying `working` and sits in **Active** forever. The board cannot see a provider process, so the only honest signal available to it is silence: a card whose lead agent still reports `working` and whose last update is **15 minutes** old gets a dashed amber **Stalled** chip. The chip carries a tooltip, and the card's own timestamp beside it already says how long the quiet has run, so neither repeats the other.
+
+Three deliberate constraints:
+
+- **It never moves the card between lanes.** Attention means *an agent says it needs you*; if a timer could promote a card into it, that lane would also mean *an agent has not typed for a while*, and a long build would page you through the opt-in desktop alerts. A stalled card stays in Active and grows a chip.
+- **Only a card that still claims to be working.** A card already in Attention, Handoff, or Done has said what it wants; re-flagging a 43-minute-old handoff as "stalled" would be noise about a clean stop.
+- **One threshold, one place.** `STALL_AFTER_MS` lives in `public/board-state.js`; neither the page nor the chip's copy restates the number, and `test/stall-flag.test.mjs` fails if either starts to.
+
+Because the flag is derived rather than declared, the agent-declared `stale` status still exists and still means something different: an agent that can still write is telling you it is stuck, and that lands in Attention.
+
+**It clears itself.** Nothing latches and there is no dismissal gesture: the chip is recomputed on every poll from the card's last update, so one ordinary `update_agent_progress` or `add_message` from the agent removes it on the next refresh. Verified end to end on 2026-09-16 — a working card backdated 20 minutes showed the chip, and a single ordinary progress write cleared it (real MCP write → store → `/api` payload → chip).
+
+The counterpart is an operational rule rather than a code one. The portable skill and this repo's policy ask an agent to post one short `note` before any step expected to keep it silent for more than about ten minutes, and to report `status: stale` itself when it knows it is stuck rather than waiting to be inferred. Heartbeats are what turn the chip from a guess about a busy agent into evidence of a dead one — though a single blocking command gives an agent no moment to report mid-step, which is why the announcement is asked for *beforehand*.
+
+The extra chip forced a layout change worth knowing about: at the four-lane band (~1081–1400px) a lane is 250–330px, and the status chip plus any badge needs 153px of the 244px of card content that the 84px timestamp also wants. Measured, the chip was clipped and printed over the time, so `.card-topline` now wraps and the timestamp drops to its own right-aligned line. Only cards in that band grow, and cards never overlap.
+
+Known limits:
+
+- Silence is not proof. A 20-minute build, a long test run, or a session the human left open at a prompt all look exactly like a limit hit. This is why the flag is advisory rather than a lane move, and why the skill asks for a heartbeat before a long step.
+- The heartbeat only helps when an agent gets control between steps. A single blocking command cannot be interrupted to report, so a genuinely busy agent can still be flagged; the rule is to announce that step first.
+- A card only ages out while the board is open somewhere: the timer is the page's five-second poll, and browsers throttle timers in a hidden tab, so the chip can appear a little late.
+- The threshold is fixed rather than per-agent. A tool that legitimately runs for 40 minutes has no way to say so, and will be flagged from minute 15.
+
 ## Theme
 
 The board ships a light and a dark palette with a **System / Light / Dark** control in the masthead. `System` is stored as an absent key rather than a literal, so a page left on it follows the OS live; an explicit choice pins the page and survives reloads.

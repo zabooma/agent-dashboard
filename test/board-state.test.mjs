@@ -5,16 +5,20 @@ import {
   acknowledgeAll,
   attentionStamp,
   emptyReadState,
+  isStalled,
   isUnread,
   laneFor,
   notificationPlan,
   parseReadState,
   pruneReadState,
   serializeReadState,
+  STALL_AFTER_MS,
   unreadWorkSessions,
 } from '../public/board-state.js';
 
 const card = (id, status, updatedAt) => ({ id, status, updatedAt, title: `Card ${id}` });
+const NOON = Date.parse('2026-09-16T12:00:00.000Z');
+const ago = (milliseconds) => new Date(NOON - milliseconds).toISOString();
 
 test('every status maps to a lane, and an unknown one still asks for a human', () => {
   assert.equal(laneFor('needs_input'), 'attention');
@@ -131,4 +135,40 @@ test('records for deleted cards are pruned', () => {
   };
   const pruned = pruneReadState(read, [card('kept', 'needs_input', '2026-09-16T10:00:00.000Z')]);
   assert.deepEqual(pruned, { seen: { kept: '2026-09-16T10:00:00.000Z' }, notified: ['kept'] });
+});
+
+// Silence is the only stall signal the board has: an agent that hits a context or usage limit stops
+// writing and cannot report anything afterwards, so the card would otherwise sit in Active forever.
+// These cases pin both halves — the card that has gone quiet, and the ones that must be left alone.
+test('only a card still claiming to be working can be stalled', () => {
+  const quiet = ago(STALL_AFTER_MS + 60_000);
+  assert.equal(isStalled(card('a', 'working', quiet), NOON), true, 'a silent working card is the case this exists for');
+  for (const status of ['needs_input', 'blocked', 'stale', 'handoff', 'done']) {
+    assert.equal(isStalled(card(status, status, quiet), NOON), false, `${status} has already said what it wants`);
+  }
+});
+
+test('the stall threshold is the boundary, not an approximation of it', () => {
+  assert.equal(isStalled(card('a', 'working', ago(STALL_AFTER_MS - 1)), NOON), false, 'a millisecond short is still working');
+  assert.equal(isStalled(card('a', 'working', ago(STALL_AFTER_MS)), NOON), true, 'the threshold itself counts as stalled');
+});
+
+test('an unreadable timestamp is not evidence of a stall', () => {
+  for (const updatedAt of [undefined, null, '', 'not a date']) {
+    assert.equal(isStalled({ id: 'a', status: 'working', updatedAt }, NOON), false, `${JSON.stringify(updatedAt)} proves nothing`);
+  }
+});
+
+test('a stamp in the future does not flag a card', () => {
+  const ahead = new Date(NOON + 60_000).toISOString();
+  assert.equal(isStalled(card('a', 'working', ahead), NOON), false, 'negative silence is a clock skew, not a stall');
+});
+
+// The two flags a card can wear are mutually exclusive by construction: a stalled card is always in
+// Active and only Attention cards are ever unread. That is what keeps the dashed stall chip and the
+// solid amber "New" rail from appearing together and reading as one confusing signal.
+test('a stalled card is never also an unread attention card', () => {
+  const quietWorking = card('a', 'working', ago(STALL_AFTER_MS + 60_000));
+  assert.equal(isStalled(quietWorking, NOON), true);
+  assert.equal(attentionStamp(quietWorking), null, 'the two flags cannot both be set');
 });

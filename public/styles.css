@@ -162,10 +162,21 @@ button { cursor: pointer; }
 .session-card:hover { transform: translate(-2px, -2px); border-color: var(--accent); }
 .card-main { display: block; width: 100%; padding: 15px 48px 0 15px; border: 0; color: inherit; text-align: left; background: transparent; }
 .card-details { padding: 0 15px 15px; }
-.card-topline { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+/* Wrapping is load-bearing, not decorative. At the four-lane band (~1081–1360px) a lane is only
+   ~255–330px wide, and the status chip plus a badge is wider than the space the timestamp leaves:
+   measured 153px of badges against 170px of card content, of which the timestamp already claims 84.
+   Without the wrap the badge is clipped and prints over the time; with it, the timestamp drops to its
+   own right-aligned line and only the cards in that band grow. */
+.card-topline { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; }
 .card-flags { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .status-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 0 7px; border: 1px solid currentColor; color: var(--accent); font: 700 10px/1 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; }
 .status-chip::before { content: ''; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: currentColor; }
+/* Derived from silence, not declared by an agent, so it is drawn as a dashed amber outline rather
+   than the solid amber of a card the human is actually being asked about. Same family — something is
+   wrong — but a weaker claim, because a long silent step trips it too. */
+.stall-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 20px; padding: 0 7px; border: 1px dashed var(--amber); color: var(--amber); font: 700 10px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.stall-chip[hidden] { display: none; }
+.stall-chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .new-badge { display: inline-flex; align-items: center; gap: 5px; min-height: 20px; padding: 0 7px; color: var(--bg); background: var(--amber); font: 700 10px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
 /* `hidden` cannot win against the display above, so the badge states its own off state. */
 .new-badge[hidden] { display: none; }
@@ -176,7 +187,7 @@ button { cursor: pointer; }
 .status-chip[data-status='blocked'] { color: var(--red); }
 .status-chip[data-status='handoff'] { color: var(--purple); }
 .status-chip[data-status='done'] { color: var(--blue); }
-.card-topline time { color: var(--muted); font: 10px/1 var(--font-mono); }
+.card-topline time { margin-left: auto; color: var(--muted); font: 10px/1 var(--font-mono); }
 .issue-label { margin: 16px 0 5px; color: var(--muted); font: 700 10px/1 var(--font-mono); letter-spacing: .06em; }
 .session-card h3 { margin: 0; font: 500 18px/1.15 var(--font-ui); letter-spacing: -.025em; }
 .summary { display: -webkit-box; margin: 12px 0 14px; overflow: hidden; color: var(--fg-body); font-size: 12px; line-height: 1.42; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
