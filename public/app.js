@@ -432,6 +432,104 @@ function allMessages(workSession) {
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
+// The clipboard API needs a secure context, and the board can be reached over a LAN address where
+// `navigator.clipboard` does not exist. The textarea path is what keeps the copy buttons working
+// there — a copy control that silently does nothing is worse than no button.
+async function copyText(value) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch (error) {
+    // Fall through to the legacy path: the API can also reject on a permission or focus problem.
+  }
+  const field = document.createElement('textarea');
+  field.value = value;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.top = '-1000px';
+  // The sheet is a modal <dialog>, which makes everything outside it inert — and a selection inside
+  // an inert subtree is empty, so a scratch field parked in <body> copies nothing while
+  // `execCommand('copy')` still reports success. Anchor it inside the open dialog instead.
+  (document.querySelector('dialog[open]') ?? document.body).append(field);
+  field.select();
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch (error) {
+    copied = false;
+  }
+  field.remove();
+  return copied;
+}
+
+function createCopyButton(label, value) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'sheet-copy';
+  button.textContent = 'Copy';
+  button.title = `Copy ${label}`;
+  button.setAttribute('aria-label', `Copy ${label}`);
+  button.addEventListener('click', async () => {
+    const copied = await copyText(value);
+    button.dataset.copied = String(copied);
+    button.textContent = copied ? 'Copied' : 'Copy failed';
+    button.setAttribute('aria-label', copied ? `Copied ${label}` : `Could not copy ${label}`);
+    window.setTimeout(() => {
+      delete button.dataset.copied;
+      button.textContent = 'Copy';
+      button.setAttribute('aria-label', `Copy ${label}`);
+    }, 1600);
+  });
+  return button;
+}
+
+// One row per recorded fact. The value wraps instead of clipping, and the pasteable ones carry a
+// copy button, so the sheet is a resume surface: whatever it shows can be handed straight to a
+// terminal.
+function createFactRow(label, value, { missing = 'not recorded', href = null, copyable = false } = {}) {
+  const row = document.createElement('div');
+  row.className = 'sheet-fact';
+  const term = document.createElement('dt');
+  term.textContent = label;
+  const detail = document.createElement('dd');
+  if (value) {
+    const field = document.createElement(href ? 'a' : 'code');
+    field.className = 'sheet-fact-value';
+    field.textContent = value;
+    if (href) {
+      field.href = href;
+      field.target = '_blank';
+      field.rel = 'noopener noreferrer';
+    } else {
+      field.title = value;
+    }
+    detail.append(field);
+    if (copyable) detail.append(createCopyButton(label.toLowerCase(), value));
+  } else {
+    const absent = document.createElement('span');
+    absent.className = 'sheet-fact-missing';
+    absent.textContent = missing;
+    detail.append(absent);
+  }
+  row.append(term, detail);
+  return row;
+}
+
+function renderSheetFacts(workSession) {
+  // Only the three values a human pastes into a terminal get a copy button; the issue is a link and
+  // the timestamp is read, not reused.
+  const issueValue = workSession.issueNumber ? `#${workSession.issueNumber}` : workSession.issueUrl ?? null;
+  document.querySelector('#sheet-facts').replaceChildren(
+    createFactRow('Repository', workSession.project ?? null, { missing: 'no repository recorded', copyable: true }),
+    createFactRow('Branch', workSession.branch ?? null, { missing: 'no branch recorded', copyable: true }),
+    createFactRow('Worktree', workSession.worktree ?? null, { missing: 'no worktree recorded', copyable: true }),
+    createFactRow('Issue', issueValue, { missing: 'no issue recorded', href: workSession.issueUrl ?? null }),
+    createFactRow('Updated', relativeTime(workSession.updatedAt)),
+  );
+}
+
 function showWorkSession(workSession) {
   state.selected = workSession;
   // Reading a card is what clears its highlight; the card itself stays in Attention until an agent
@@ -439,10 +537,7 @@ function showWorkSession(workSession) {
   if (markSeen(workSession)) render();
   document.querySelector('#sheet-kicker').textContent = `${issueLabel(workSession)} / ${statusLabel(workSession.status).toUpperCase()}`;
   document.querySelector('#sheet-title').textContent = workSession.title;
-  const meta = document.querySelector('#sheet-meta');
-  meta.replaceChildren(...[workSession.project ?? 'local project', workSession.branch ?? 'no branch', relativeTime(workSession.updatedAt)].map((text) => {
-    const tag = document.createElement('span'); tag.textContent = text; return tag;
-  }));
+  renderSheetFacts(workSession);
   document.querySelector('#sheet-summary').textContent = workSession.summary;
   document.querySelector('#sheet-next-action').textContent = workSession.nextAction ?? 'No further action recorded.';
   const agentList = document.querySelector('#agent-list');
