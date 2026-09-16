@@ -136,7 +136,11 @@ button { cursor: pointer; }
 .signal-strip > p { display: grid; align-items: center; padding-left: 29px; color: var(--fg); font: 500 15px/1.4 var(--font-ui); }
 
 .board { display: grid; grid-template-columns: 1.08fr 1fr 1fr .88fr; gap: 14px; align-items: start; }
-.lane { min-height: 520px; border: 1px solid var(--line); background: linear-gradient(180deg, var(--lane-sheen), transparent 45%), var(--surface); }
+/* A lane is only as tall as what is in it, so an empty board is four short strips instead of four
+   tall empty columns, and each lane grows downward on its own as cards arrive. `align-items: start`
+   above is what keeps a short lane from being stretched to match a full neighbour — a stretched
+   lane would leave the old 520px of dead space behind. */
+.lane { border: 1px solid var(--line); background: linear-gradient(180deg, var(--lane-sheen), transparent 45%), var(--surface); }
 .lane-heading { position: relative; padding: 19px 19px 17px; border-bottom: 1px solid var(--line); }
 .lane-heading h2 { margin: 0; font: 500 24px/1.05 var(--font-ui); letter-spacing: -.03em; }
 .lane-count { position: absolute; top: 20px; right: 18px; display: grid; place-items: center; min-width: 29px; height: 29px; border: 1px solid var(--line); color: var(--muted); font: 700 12px var(--font-mono); }
@@ -250,5 +254,5 @@ button { cursor: pointer; }
 .session-frame .sheet-close { position: static; }
 .session-frame iframe { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--bg); }
 
-@media (max-width: 1080px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lane { min-height: 250px; } }
+@media (max-width: 1080px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .shell { width: min(100% - 24px, 620px); padding-top: 10px; } .masthead { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; } .wordmark { grid-column: 1; grid-row: 1; } .clock-block { grid-column: 2; grid-row: 1; min-width: 104px; } .signal-strip { grid-column: 1 / -1; grid-row: 2; width: 100%; grid-template-columns: repeat(3, 1fr); } .signal-strip > p { grid-column: 1 / -1; min-height: 60px; padding-left: 18px; } .masthead-tools { grid-column: 1 / -1; grid-row: 3; justify-items: start; } .install-control { min-width: 0; } .board { grid-template-columns: 1fr; } .session-sheet article { padding: 27px 22px; } .next-step { margin-inline: -22px; padding-inline: 22px; } }
