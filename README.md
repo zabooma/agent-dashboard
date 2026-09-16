@@ -105,6 +105,29 @@ Known limit: the panel opens the session **tool**, not the specific conversation
 
 A host that spawns the MCP server with `AGENT_DASHBOARD_SESSION_ID` (and optionally `AGENT_DASHBOARD_SESSION_NAME`) gets those values recorded for every agent that registers without them. DSH scrubs `DSH_*` names from MCP children, so a DSH agent passes `providerSessionId` itself — read from `$DSH_SESSION_ID`, never guessed.
 
+## Theme
+
+The board ships a light and a dark palette with a **System / Light / Dark** control in the masthead. `System` is stored as an absent key rather than a literal, so a page left on it follows the OS live; an explicit choice pins the page and survives reloads.
+
+The control is a segmented radio group rather than a select, and that is load-bearing twice over. It needs no visible group label — the legend is visually hidden but kept for its accessible name — so it costs no extra row; and at 25px it keeps the stacked tools column (78px) under the signal strip (85px), which is what actually sets the masthead height. A labelled select pushed that column past the strip and grew the masthead. Native radios also give arrow-key traversal for free. The radio values `system`/`light`/`dark` are a contract with the resolver, which only persists the latter two literally; `test/theme.test.mjs` pins them.
+
+The resolved theme is written to `<html data-theme>`. Light is the CSS base and `:root[data-theme='dark']` overrides it — deliberately not a `prefers-color-scheme` media query, because a media query cannot share a declaration block with an attribute selector, which would force the whole dark palette to be written twice.
+
+The palette tokens are `--bg`, `--fg`, `--fg-lead`, `--fg-body`, `--muted`, `--surface`, `--surface-card`, `--surface-sheet`, the three `--line` weights, the five semantic colours (`--accent`, `--amber`, `--red`, `--blue`, `--purple`), and the wash/shadow tokens. They were previously named `--paper`/`--ink`/`--panel`/`--lime`, which read as colours rather than roles and inverted in light mode. Both palettes define the same 24 tokens; a token defined in only one would silently inherit the other theme's value. Every colour in the sheet is a token — a literal in a rule cannot flip.
+
+`test/theme.test.mjs` enforces that parity, the absence of stray colour literals, that the light palette is genuinely lighter, and that the resolution rule behaves as documented — `System` follows the OS, an explicit choice beats it, an unrecognised or unreadable stored value falls back to the OS. `test/http-server.test.mjs` pins the fallback page's copy of the rule to the same cases.
+
+Two things are load-bearing:
+
+- The boot script stays **inline and ahead of the stylesheet link**. `app.js` is a deferred module, so it cannot prevent a first paint in the wrong palette.
+- There are **two copies** of the resolution rule — the board's inline script and the server-rendered `/open/` fallback in `server.mjs` — because an inline script cannot import a module. The tests pin both to the same cases so they cannot drift apart.
+
+Known limits:
+
+- The web app manifest's `theme_color` and `background_color` are static, so an installed PWA shows a dark splash before the board paints. Following the chosen theme would need a second manifest swapped at boot. The `apple-mobile-web-app-status-bar-style` hint was dropped rather than left pinned to `black-translucent`, which is unreadable on a light board; the status bar now follows `theme-color`, which the boot script keeps current.
+- The app icon is deliberately brand-dark in both themes — one icon, not two.
+- The `/open/` 404 for an unknown id ("Agent session not found") is a bare unstyled fragment and renders as a white page regardless of theme. That page was never styled; the themed reference page beside it is what a real agent without a session link gets.
+
 ## Checks
 
 ```bash

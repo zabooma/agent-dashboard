@@ -318,25 +318,33 @@ function referenceRow(label, value, missing, { copyable = false } = {}) {
   return `<div class="ref"><dt>${escapeHtml(label)}</dt><dd>${content}${value && copyable ? copyControl(label) : ''}</dd></div>`;
 }
 
+// Values mirror the board's two palettes in public/styles.css. This page is served on its own and
+// never links that stylesheet, so the tokens are repeated here rather than shared.
 const fallbackStyles = [
-  'body{margin:0;background:#101815;color:#edf3eb;font:16px/1.5 ui-monospace,monospace;padding:48px}',
-  'main{max-width:720px;border:1px solid #42534c;padding:28px;background:#17221e}',
+  ':root{color-scheme:light;--bg:#dfe2cf;--fg:#101714;--surface:#e8ead8;--line:#b0b9a0;--muted:#55665c;--accent:#3f6420;--code:#8a5205;--wash:#dde1cc}',
+  ':root[data-theme=dark]{color-scheme:dark;--bg:#101714;--fg:#e8ead8;--surface:#17211d;--line:#405148;--muted:#94a69a;--accent:#b9e481;--code:#f6bd61;--wash:#1f2c27}',
+  'body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 ui-monospace,monospace;padding:48px}',
+  'main{max-width:720px;border:1px solid var(--line);padding:28px;background:var(--surface)}',
   'h1{font-size:26px;margin:12px 0 20px}',
-  '.eyebrow{margin:0;color:#8fa79b;font-size:12px;letter-spacing:.12em}',
-  'a{color:#b9e481}',
-  'code{overflow-wrap:anywhere;color:#ffcc70}',
+  '.eyebrow{margin:0;color:var(--muted);font-size:12px;letter-spacing:.12em}',
+  'a{color:var(--accent)}',
+  'code{overflow-wrap:anywhere;color:var(--code)}',
   '.refs{margin:24px 0 0;display:grid;gap:10px}',
   '.ref{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;align-items:baseline}',
-  '.ref dt{color:#8fa79b;font-size:12px;letter-spacing:.08em;text-transform:uppercase}',
+  '.ref dt{color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase}',
   '.ref dd{margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px}',
-  '.missing{color:#8fa79b}',
-  '.copy{display:inline-flex;align-items:center;gap:6px;padding:2px 7px;border:1px solid #42534c;border-radius:4px;background:transparent;color:#b9e481;font:inherit;font-size:12px;cursor:pointer}',
-  '.copy:hover{background:#1f2c27}',
-  '.copy[data-copied=true]{border-color:#b9e481;color:#edf3eb}',
+  '.missing{color:var(--muted)}',
+  '.copy{display:inline-flex;align-items:center;gap:6px;padding:2px 7px;border:1px solid var(--line);border-radius:4px;background:transparent;color:var(--accent);font:inherit;font-size:12px;cursor:pointer}',
+  '.copy:hover{background:var(--wash)}',
+  '.copy[data-copied=true]{border-color:var(--accent);color:var(--fg)}',
   '.copy svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}',
-  '.hint{margin:22px 0 0;color:#8fa79b;font-size:13px}',
+  '.hint{margin:22px 0 0;color:var(--muted);font-size:13px}',
   '.sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
 ].join('');
+
+// Same resolution rule as the board's inline boot script, kept ahead of the stylesheet so this
+// interstitial does not flash the wrong palette either.
+const fallbackThemeScript = `(()=>{let m=null;try{m=localStorage.getItem('agent-dashboard-theme')}catch(e){m=null}const d=m==='dark'||(m!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light'})()`;
 
 const fallbackScript = `
 (() => {
@@ -398,7 +406,7 @@ function openFallback(workSession, agent) {
     referenceRow('Worktree', workSession.worktree, 'No worktree recorded.', { copyable: true }),
   ].join('');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Session link unavailable</title><style>${fallbackStyles}</style></head>
+    <title>Session link unavailable</title><script>${fallbackThemeScript}</script><style>${fallbackStyles}</style></head>
     <body><main><p class="eyebrow">AGENT DASHBOARD / OPEN SESSION</p><h1>This agent has no verified app link.</h1>
     <p>Open this agent in ${escapeHtml(agent.provider)} and resume from the saved session reference.</p>
     <dl class="refs">${rows}</dl>

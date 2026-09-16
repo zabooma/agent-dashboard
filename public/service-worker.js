@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agent-dashboard-shell-v4';
+const CACHE_NAME = 'agent-dashboard-shell-v5';
 const APP_SHELL = [
   '/',
   '/app.js',

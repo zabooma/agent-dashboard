@@ -53,6 +53,8 @@ const sessionFrame = document.querySelector('#session-frame');
 const sessionFrameTitle = document.querySelector('#session-frame-title');
 const sessionFrameExternal = document.querySelector('#session-frame-external');
 const sessionFrameView = document.querySelector('#session-frame-view');
+const themeSwitch = document.querySelector('.theme-switch');
+const themeInputs = [...document.querySelectorAll('input[name="theme"]')];
 
 function relativeTime(value) {
   const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000);
@@ -332,6 +334,52 @@ function setInstallStatus(message) {
   installStatus.textContent = message;
 }
 
+// The inline boot script in index.html has already applied the theme for first paint; this half
+// owns the control. "system" is stored as an absent key rather than a literal, so an OS change
+// reaches every page that follows the system. The resolution rule is duplicated there because an
+// inline script cannot import a module — test/theme.test.mjs pins both copies to the same cases.
+const THEME_STORAGE_KEY = 'agent-dashboard-theme';
+const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+function storedThemeMode() {
+  try {
+    const value = localStorage.getItem(THEME_STORAGE_KEY);
+    return value === 'light' || value === 'dark' ? value : 'system';
+  } catch (error) {
+    return 'system';
+  }
+}
+
+function resolvedTheme(mode) {
+  return mode === 'system' ? (systemPrefersDark.matches ? 'dark' : 'light') : mode;
+}
+
+function applyTheme(mode, { persist = false } = {}) {
+  const theme = resolvedTheme(mode);
+  document.documentElement.dataset.theme = theme;
+  themeInputs.forEach((input) => { input.checked = input.value === mode; });
+  // Read the address-bar colour back out of the palette rather than repeating it here, so
+  // changing a surface cannot leave the browser chrome on the old value. The inline boot script
+  // keeps its own literals because it runs before the stylesheet has been applied.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  if (!persist) return;
+  try {
+    if (mode === 'system') localStorage.removeItem(THEME_STORAGE_KEY);
+    else localStorage.setItem(THEME_STORAGE_KEY, mode);
+  } catch (error) {
+    // Storage is unavailable; the choice still applies to this page view.
+  }
+}
+
+// Delegated, so the handler reads the radio that actually changed rather than re-deriving it.
+themeSwitch.addEventListener('change', (event) => {
+  if (event.target.name === 'theme') applyTheme(event.target.value, { persist: true });
+});
+// Only a page still following the system should react to the OS flipping.
+systemPrefersDark.addEventListener('change', () => { if (storedThemeMode() === 'system') applyTheme('system'); });
+window.addEventListener('storage', (event) => { if (event.key === THEME_STORAGE_KEY) applyTheme(storedThemeMode()); });
+
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault();
   state.deferredInstallPrompt = event;
@@ -375,6 +423,7 @@ sessionFrame.addEventListener('click', (event) => { if (event.target === session
 // Dropping the src on close stops the embedded session, its streams, and its polling.
 sessionFrame.addEventListener('close', () => sessionFrameView.removeAttribute('src'));
 updateClock();
+applyTheme(storedThemeMode());
 void loadWorkSessions();
 setInterval(updateClock, 1_000);
 if (!state.demo) setInterval(() => void loadWorkSessions(), 5_000);

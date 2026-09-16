@@ -3,11 +3,23 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#101714">
+    <meta name="theme-color" content="#dfe2cf">
     <meta name="application-name" content="Agent Dashboard">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Agent Dashboard</title>
+    <script>
+      // Resolve the theme before the stylesheet is requested, or the first paint shows the wrong
+      // palette. This must stay inline and ahead of the stylesheet link: app.js is a deferred
+      // module, so it cannot run in time. app.js takes over once it loads.
+      (() => {
+        let mode = null;
+        try { mode = localStorage.getItem('agent-dashboard-theme'); } catch (error) { mode = null; }
+        const dark = mode === 'dark' || (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.content = dark ? '#101714' : '#dfe2cf';
+      })();
+    </script>
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/app-icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/app-icon.svg">
@@ -31,11 +43,19 @@
           <strong id="clock">--:--</strong>
           <span id="refresh-state">SYNCING</span>
         </div>
-        <div class="install-control">
-          <button class="install-button" id="install-button" type="button" hidden>
-            Install dashboard <span aria-hidden="true">↓</span>
-          </button>
-          <span class="install-status" id="install-status" aria-live="polite"></span>
+        <div class="masthead-tools">
+          <fieldset class="theme-switch">
+            <legend class="visually-hidden">Theme</legend>
+            <label><input type="radio" name="theme" value="system" checked><span>System</span></label>
+            <label><input type="radio" name="theme" value="light"><span>Light</span></label>
+            <label><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+          </fieldset>
+          <div class="install-control">
+            <button class="install-button" id="install-button" type="button" hidden>
+              Install dashboard <span aria-hidden="true">↓</span>
+            </button>
+            <span class="install-status" id="install-status" aria-live="polite"></span>
+          </div>
         </div>
       </header>
 
@@ -106,6 +126,6 @@
       </article>
     </template>
 
-    <script type="module" src="/app.js?v=2"></script>
+    <script type="module" src="/app.js?v=3"></script>
   </body>
 </html>
