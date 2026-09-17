@@ -172,12 +172,16 @@ button { cursor: pointer; }
 .lane-ack:focus-visible { outline: 1px solid var(--amber); outline-offset: 2px; }
 .card-stack { display: grid; gap: 10px; padding: 10px; }
 
-.session-card { position: relative; overflow: hidden; border: 1px solid var(--line-strong); background: var(--surface-card); box-shadow: 4px 4px 0 var(--shadow-card); transition: transform .16s ease, border-color .16s ease; }
+.session-card { position: relative; overflow: hidden; border: 1px solid var(--line-strong); background: var(--surface-card); box-shadow: 4px 4px 0 var(--shadow-card); transition: border-color .16s ease; }
 /* A card that arrived in Attention since the human last opened it. The rail is drawn rather than
    bordered so the card keeps its box, and it stays behind the hover feedback below. */
 .session-card.is-new { border-color: var(--amber); }
 .session-card.is-new::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; pointer-events: none; background: var(--amber); }
-.session-card:hover { transform: translate(-2px, -2px); border-color: var(--accent); }
+/* Hover is a colour change and nothing else. The card used to also jump 2px up and left, toward its
+   own hard shadow, which read as the card sliding out from under the pointer on a board the human is
+   mostly scanning rather than clicking. The box stays exactly where it is; the accent border is what
+   says the pointer is on it, and `test/card-hover.test.mjs` keeps it that way. */
+.session-card:hover { border-color: var(--accent); }
 .card-main { display: block; width: 100%; padding: 15px 48px 0 15px; border: 0; color: inherit; text-align: left; background: transparent; }
 .card-details { padding: 0 15px 15px; }
 /* Wrapping is load-bearing, not decorative. At the four-lane band (~1081–1360px) a lane is only
