@@ -3,11 +3,13 @@ import {
   acknowledgeAll,
   isStalled,
   isUnread,
+  laneCollapseState,
   laneFor,
   notificationPlan,
   parseReadState,
   pruneReadState,
   serializeReadState,
+  toggleLaneCollapse,
   unreadWorkSessions,
 } from './board-state.js';
 
@@ -402,6 +404,9 @@ function createCard(workSession, unread) {
       state.collapsedWorkSessionIds.delete(workSession.id);
     }
     setCardCollapsed(card, collapseButton, nextCollapsed);
+    // A single card reopening leaves the lane no longer entirely shut, and the lane's own button has
+    // to stop offering "Expand all" the moment that becomes true rather than at the next poll.
+    refreshLaneToggles(groupSessionsByLane());
   });
   card.dataset.workSessionId = workSession.id;
   return fragment;
@@ -414,11 +419,43 @@ function addEmptyState(lane, text) {
   lane.querySelector('.card-stack').append(empty);
 }
 
+// The board's own layout decides the lanes, so every lane the markup carries gets an entry even
+// when it holds nothing — an unknown status still lands somewhere, because `laneFor` defaults to
+// Attention rather than dropping the card.
+function groupSessionsByLane() {
+  const sessionsByLane = new Map([...document.querySelectorAll('.lane')].map((lane) => [lane.dataset.lane, []]));
+  state.workSessions.forEach((workSession) => sessionsByLane.get(laneFor(workSession.status)).push(workSession));
+  return sessionsByLane;
+}
+
+// The lane buttons are static markup, so a re-render replaces the cards they act on but never the
+// buttons themselves — which is what keeps focus on the button through the click. Only the state,
+// the tooltip, and the hidden flag are refreshed here, after the cards behind them are rebuilt.
+//
+// The control is the card's collapse button, so it carries no visible label: the lane's own count
+// badge sits beside it and the tooltip states the number, which keeps the heading exactly as tall as
+// it is without the control.
+function refreshLaneToggles(sessionsByLane) {
+  sessionsByLane.forEach((workSessions, laneName) => {
+    const lane = document.querySelector(`[data-lane="${laneName}"]`);
+    const button = lane?.querySelector('.lane-collapse');
+    if (!button) return;
+    const { total, allCollapsed } = laneCollapseState(state.collapsedWorkSessionIds, workSessions.map((workSession) => workSession.id));
+    // A lane with nothing in it has nothing to collapse, and a control that does nothing when
+    // clicked is worse than no control at all.
+    button.hidden = total === 0;
+    lane.classList.toggle('is-collapsed', allCollapsed);
+    const cards = `${total} card${total === 1 ? '' : 's'}`;
+    button.setAttribute('aria-expanded', String(!allCollapsed));
+    button.setAttribute('aria-label', allCollapsed ? `Expand all ${cards} in this lane` : `Collapse all ${cards} in this lane`);
+    button.title = allCollapsed ? `Expand all ${cards} in this lane` : `Collapse all ${cards} in this lane`;
+  });
+}
+
 function render() {
   clearLanes();
   const unread = new Set(unreadWorkSessions(state.readState, state.workSessions).map((workSession) => workSession.id));
-  const sessionsByLane = new Map([...document.querySelectorAll('.lane')].map((lane) => [lane.dataset.lane, []]));
-  state.workSessions.forEach((workSession) => sessionsByLane.get(laneFor(workSession.status)).push(workSession));
+  const sessionsByLane = groupSessionsByLane();
   sessionsByLane.forEach((workSessions, laneName) => {
     const lane = document.querySelector(`[data-lane="${laneName}"]`);
     lane.querySelector('.lane-count').textContent = workSessions.length;
@@ -428,6 +465,7 @@ function render() {
     }
     workSessions.forEach((workSession) => lane.querySelector('.card-stack').append(createCard(workSession, unread.has(workSession.id))));
   });
+  refreshLaneToggles(sessionsByLane);
   const agents = state.workSessions.flatMap((workSession) => workSession.agents);
   const attention = state.workSessions.filter((workSession) => laneFor(workSession.status) === 'attention').length;
   document.querySelector('#total-count').textContent = state.workSessions.length;
@@ -716,6 +754,18 @@ attentionAck.addEventListener('click', () => {
   state.readState = acknowledgeAll(state.readState, state.workSessions);
   persistReadState();
   render();
+});
+
+// Collapsing a lane writes to the same set the individual card buttons do, so the two can never
+// disagree: a card reopened by hand inside a collapsed lane simply drops out of the set, and the
+// lane button drops back to "Collapse all" because the lane is no longer entirely shut.
+document.querySelectorAll('.lane-collapse').forEach((button) => {
+  button.addEventListener('click', () => {
+    const laneName = button.closest('.lane').dataset.lane;
+    const workSessionIds = (groupSessionsByLane().get(laneName) ?? []).map((workSession) => workSession.id);
+    state.collapsedWorkSessionIds = toggleLaneCollapse(state.collapsedWorkSessionIds, workSessionIds);
+    render();
+  });
 });
 
 document.querySelector('#sheet-close').addEventListener('click', () => sheet.close());

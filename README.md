@@ -107,6 +107,12 @@ Known limit: the panel opens the session **tool**, not the specific conversation
 
 A host that spawns the MCP server with `AGENT_DASHBOARD_SESSION_ID` (and optionally `AGENT_DASHBOARD_SESSION_NAME`) gets those values recorded for every agent that registers without them. DSH scrubs `DSH_*` names from MCP children, so a DSH agent passes `providerSessionId` itself — read from `$DSH_SESSION_ID`, never guessed.
 
+## Lanes
+
+The board is four equal columns — Attention, Active, Handoff, Done — and a card is placed by its status through one shared map (`laneFor`), never by a timer or a heuristic. The columns are `repeat(4, minmax(0, 1fr))`, and both halves of that matter: the board used to split them `1.08fr 1fr 1fr .88fr`, which made Attention and Done 20% apart by construction, and a bare `1fr` track keeps an automatic minimum size, so one card carrying a long unbreakable worktree path could widen its own lane and restore the difference the ratio was removed to fix. `test/lane-layout.test.mjs` pins both.
+
+Each lane's title carries the card's own collapse control, acting on every card in that lane: a lane of thirty-six cards is one click away from thirty-six titles, and one click back. It is literally the same box — one rule shared by `.card-collapse` and `.lane-collapse`, so the two cannot drift — and it rides on the title line instead of a row of its own, which is why a heading still measures 83px whether the lane is full or empty. It offers to expand only when nothing in the lane is left open: a lane where the human already shut two cards by hand collapses the remaining ones rather than reopening those two. The control is hidden while the lane is empty — a button that does nothing when clicked is worse than no button — and it writes to the same set as each card's own control, so the two can never disagree about what is open. Both are static markup, so a re-render replaces the cards and never the button that was just clicked.
+
 ## Attention and alerts
 
 A card whose lead agent reports `needs_input`, `blocked`, or `stale` sits in the **Attention** lane. The board also tracks which of those cards the human has actually opened: a card nobody has looked at since it last moved gets an amber rail and a **New** badge, the lane header offers **Mark n seen**, and the unread count rides in the tab title — the only part of the board still visible while another app has the keyboard.

@@ -65,21 +65,47 @@
       <section class="board" aria-label="Agent sessions by status">
         <section class="lane lane--attention" data-lane="attention">
           <header class="lane-heading">
-            <p>01 / HUMAN SIGNAL</p><h2>Attention</h2><span class="lane-count">0</span>
+            <p>01 / HUMAN SIGNAL</p>
+            <div class="lane-title">
+              <h2>Attention</h2>
+              <button class="lane-collapse" type="button" aria-expanded="true" hidden><span aria-hidden="true">▾</span><span class="visually-hidden">Collapse all cards</span></button>
+            </div>
+            <span class="lane-count">0</span>
             <button class="lane-ack" id="attention-ack" type="button" hidden>Mark seen</button>
           </header>
           <div class="card-stack"></div>
         </section>
         <section class="lane lane--active" data-lane="active">
-          <header class="lane-heading"><p>02 / LIVE THREADS</p><h2>Active</h2><span class="lane-count">0</span></header>
+          <header class="lane-heading">
+            <p>02 / LIVE THREADS</p>
+            <div class="lane-title">
+              <h2>Active</h2>
+              <button class="lane-collapse" type="button" aria-expanded="true" hidden><span aria-hidden="true">▾</span><span class="visually-hidden">Collapse all cards</span></button>
+            </div>
+            <span class="lane-count">0</span>
+          </header>
           <div class="card-stack"></div>
         </section>
         <section class="lane lane--handoff" data-lane="handoff">
-          <header class="lane-heading"><p>03 / CONTINUITY</p><h2>Handoff</h2><span class="lane-count">0</span></header>
+          <header class="lane-heading">
+            <p>03 / CONTINUITY</p>
+            <div class="lane-title">
+              <h2>Handoff</h2>
+              <button class="lane-collapse" type="button" aria-expanded="true" hidden><span aria-hidden="true">▾</span><span class="visually-hidden">Collapse all cards</span></button>
+            </div>
+            <span class="lane-count">0</span>
+          </header>
           <div class="card-stack"></div>
         </section>
         <section class="lane lane--done" data-lane="done">
-          <header class="lane-heading"><p>04 / CLOSED LOOP</p><h2>Done</h2><span class="lane-count">0</span></header>
+          <header class="lane-heading">
+            <p>04 / CLOSED LOOP</p>
+            <div class="lane-title">
+              <h2>Done</h2>
+              <button class="lane-collapse" type="button" aria-expanded="true" hidden><span aria-hidden="true">▾</span><span class="visually-hidden">Collapse all cards</span></button>
+            </div>
+            <span class="lane-count">0</span>
+          </header>
           <div class="card-stack"></div>
         </section>
       </section>

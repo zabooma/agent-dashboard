@@ -135,7 +135,11 @@ button { cursor: pointer; }
 .signal-strip .attention-signal span { color: var(--amber); }
 .signal-strip > p { display: grid; align-items: center; padding-left: 29px; color: var(--fg); font: 500 15px/1.4 var(--font-ui); }
 
-.board { display: grid; grid-template-columns: 1.08fr 1fr 1fr .88fr; gap: 14px; align-items: start; }
+/* Four equal lanes. `repeat(4, minmax(0, 1fr))` rather than `repeat(4, 1fr)`: a bare `1fr` track
+   still has an automatic minimum size, so one card holding a long unbreakable string — a worktree
+   path, a branch name — widens its own lane and the four stop being equal. The board used to be
+   1.08fr/1fr/1fr/.88fr, which made Attention and Done 20% apart by construction. */
+.board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: start; }
 /* A lane is only as tall as what is in it, so an empty board is four short strips instead of four
    tall empty columns, and each lane grows downward on its own as cards arrive. `align-items: start`
    above is what keeps a short lane from being stretched to match a full neighbour — a stretched
@@ -143,11 +147,25 @@ button { cursor: pointer; }
 .lane { border: 1px solid var(--line); background: linear-gradient(180deg, var(--lane-sheen), transparent 45%), var(--surface); }
 .lane-heading { position: relative; padding: 19px 19px 17px; border-bottom: 1px solid var(--line); }
 .lane-heading h2 { margin: 0; font: 500 24px/1.05 var(--font-ui); letter-spacing: -.03em; }
+/* The lane's own toggle rides on the title line rather than in a row of its own, so a lane heading
+   is exactly as tall as it was before the control existed. `margin-block: -1px` is what buys that
+   last pixel: the h2's line box is 25.2px and the button is 26px. */
+.lane-title { display: flex; gap: 10px; align-items: center; }
+.lane-title .lane-collapse { margin-block: -1px; }
 .lane-count { position: absolute; top: 20px; right: 18px; display: grid; place-items: center; min-width: 29px; height: 29px; border: 1px solid var(--line); color: var(--muted); font: 700 12px var(--font-mono); }
 .lane--attention .lane-heading h2 { color: var(--amber); }
 .lane--active .lane-heading h2 { color: var(--accent); }
 .lane--handoff .lane-heading h2 { color: var(--purple); }
 .lane--done .lane-heading h2 { color: var(--blue); }
+/* One control per lane that acts on every card in it: a lane of thirty-five cards is one click away
+   from thirty-five titles, and one click back. It is the card's collapse control, sharing its rules
+   below rather than copying them, because it does to a whole lane what the card button does to one
+   card — and two copies of a box drift. */
+/* `display` here would otherwise beat the `hidden` attribute the page uses to keep the control out
+   of an empty lane's heading, so it states its own off state — exactly as `.stall-chip[hidden]` and
+   `.new-badge[hidden]` do. */
+.lane-collapse[hidden] { display: none; }
+.lane.is-collapsed .lane-collapse > span:first-child { transform: rotate(-90deg); }
 /* Only ever shown when the lane holds something the human has not opened yet. */
 .lane-ack { margin-top: 11px; padding: 6px 8px; border: 1px solid var(--amber); color: var(--amber); background: transparent; font: 700 9px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
 .lane-ack:hover { color: var(--bg); background: var(--amber); }
@@ -201,12 +219,15 @@ button { cursor: pointer; }
 .agent-summary-open { padding: 4px 5px; border: 1px solid var(--accent); color: var(--accent); font: 700 9px/1 var(--font-mono); text-decoration: none; white-space: nowrap; }
 .agent-summary-open:hover { color: var(--bg); background: var(--accent); }
 .agent-summary-open:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
-.card-collapse { position: absolute; top: 55px; right: 12px; display: grid; width: 26px; height: 26px; place-items: center; padding: 0; border: 1px solid var(--line); color: var(--muted); background: transparent; transition: border-color .15s ease, color .15s ease; }
-.card-collapse > span:first-child { transition: transform .15s ease; }
-.card-collapse:hover { border-color: var(--accent); color: var(--accent); }
-.session-card.is-collapsed .card-collapse > span:first-child { transform: rotate(-90deg); }
+/* The card's collapse control and the lane's are one box: same 26px square, same triangle that turns
+   to point at what is shut. Only the card's is positioned — over its own card. */
+.card-collapse, .lane-collapse { display: grid; width: 26px; height: 26px; place-items: center; padding: 0; border: 1px solid var(--line); color: var(--muted); background: transparent; transition: border-color .15s ease, color .15s ease; }
+.card-collapse { position: absolute; top: 55px; right: 12px; }
+.card-collapse > span:first-child, .lane-collapse > span:first-child { transition: transform .15s ease; }
+.card-collapse:hover, .lane-collapse:hover { border-color: var(--accent); color: var(--accent); }
+.session-card.is-collapsed .card-collapse > span:first-child, .lane.is-collapsed .lane-collapse > span:first-child { transform: rotate(-90deg); }
 .session-card.is-collapsed .card-details, .session-card.is-collapsed .card-footer { display: none; }
-.card-main:focus-visible, .card-collapse:focus-visible { outline: 1px solid var(--accent); outline-offset: -4px; }
+.card-main:focus-visible, .card-collapse:focus-visible, .lane-collapse:focus-visible { outline: 1px solid var(--accent); outline-offset: -4px; }
 .card-footer { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-height: 45px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--overlay-foot); }
 .next-action { min-width: 0; overflow: hidden; color: var(--muted); font: 10px/1.2 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .card-actions { display: flex; flex: none; gap: 11px; align-items: center; }

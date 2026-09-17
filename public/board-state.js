@@ -99,6 +99,23 @@ export function pruneReadState(readState, workSessions) {
   };
 }
 
+// "Collapse all" is one button per lane, so it still has to mean something when the lane is mixed.
+// Counting is what makes the label honest: the lane offers "Expand all" only once there is nothing
+// left to collapse, so the button always names what the next click will do. Expanding on the first
+// click instead would leave the cards the human already shut closed under an "Expand all" label.
+export function laneCollapseState(collapsedIds, workSessionIds) {
+  const total = workSessionIds.length;
+  const collapsed = workSessionIds.filter((id) => collapsedIds.has(id)).length;
+  return { total, collapsed, allCollapsed: total > 0 && collapsed === total };
+}
+
+export function toggleLaneCollapse(collapsedIds, workSessionIds) {
+  const next = new Set(collapsedIds);
+  const { allCollapsed } = laneCollapseState(next, workSessionIds);
+  workSessionIds.forEach((id) => (allCollapsed ? next.delete(id) : next.add(id)));
+  return next;
+}
+
 // One banner per arrival in Attention. An agent that posts twice while its card waits has not
 // arrived twice, so the latch is what stops a banner on every poll. Acknowledging a card releases
 // its latch (the next plan no longer sees it as unread) but opening it deliberately does not, and

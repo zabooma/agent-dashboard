@@ -7,12 +7,14 @@ import {
   emptyReadState,
   isStalled,
   isUnread,
+  laneCollapseState,
   laneFor,
   notificationPlan,
   parseReadState,
   pruneReadState,
   serializeReadState,
   STALL_AFTER_MS,
+  toggleLaneCollapse,
   unreadWorkSessions,
 } from '../public/board-state.js';
 
@@ -171,4 +173,30 @@ test('a stalled card is never also an unread attention card', () => {
   const quietWorking = card('a', 'working', ago(STALL_AFTER_MS + 60_000));
   assert.equal(isStalled(quietWorking, NOON), true);
   assert.equal(attentionStamp(quietWorking), null, 'the two flags cannot both be set');
+});
+
+// A lane's button acts on every card in the lane at once, so the only interesting case is the mixed
+// one: a lane where the human has already shut some cards by hand. "Collapse all" must mean the
+// remaining ones too, and the label must flip to "Expand all" only when nothing is left open.
+test('a lane button collapses everything left open, then reopens the lane', () => {
+  const ids = ['a', 'b', 'c'];
+  const partly = new Set(['a']);
+
+  assert.deepEqual(laneCollapseState(partly, ids), { total: 3, collapsed: 1, allCollapsed: false }, 'one card shut is not a collapsed lane');
+  const collapsed = toggleLaneCollapse(partly, ids);
+  assert.deepEqual([...collapsed].sort(), ids, 'the click has to shut the two cards the human left open');
+  assert.deepEqual(laneCollapseState(collapsed, ids), { total: 3, collapsed: 3, allCollapsed: true });
+
+  const expanded = toggleLaneCollapse(collapsed, ids);
+  assert.deepEqual([...expanded], [], 'the same button now opens the whole lane');
+});
+
+test('a lane toggle leaves the other lanes alone', () => {
+  const next = toggleLaneCollapse(new Set(['elsewhere']), ['a']);
+  assert.deepEqual([...next].sort(), ['a', 'elsewhere'], 'each lane owns only its own cards');
+});
+
+test('an empty lane has nothing to collapse, so its button must not offer to', () => {
+  assert.deepEqual(laneCollapseState(new Set(), []), { total: 0, collapsed: 0, allCollapsed: false });
+  assert.deepEqual([...toggleLaneCollapse(new Set(), [])], []);
 });
