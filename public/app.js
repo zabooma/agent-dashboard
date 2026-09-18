@@ -1,6 +1,7 @@
 import {
   acknowledge,
   acknowledgeAll,
+  isRepeatedDeleteClick,
   isStalled,
   isUnread,
   laneCollapseState,
@@ -159,11 +160,21 @@ function createAgentOpenLink(workSession, agent, className = '') {
   return open;
 }
 
-async function deleteWorkSession(workSession) {
+// The last deletion the human actually confirmed, and where the pointer was when they asked for it.
+// `isRepeatedDeleteClick` reads it: a modal confirm blocks the renderer, so a click that arrives while
+// the dialog is up is replayed after the board has repainted, onto whatever card now occupies those
+// pixels. Recorded when the confirmation is accepted rather than when the button is clicked, so a
+// Cancel can still be followed immediately by a deliberate second attempt.
+let confirmedDelete = null;
+
+async function deleteWorkSession(workSession, point) {
   const confirmed = window.confirm(`Delete “${workSession.title}”? This permanently removes its agents and message history.`);
   if (!confirmed) return;
+  confirmedDelete = { ...point, at: Date.now() };
   const response = await fetch(`/api/work-sessions/${encodeURIComponent(workSession.id)}`, { method: 'DELETE' });
-  if (!response.ok) throw new Error('Dashboard deletion failed');
+  // A card that is already gone is the state the human asked for, not a failure: a second tab, or a
+  // click replayed out of the dialog, can arrive here after the deletion has already happened.
+  if (!response.ok && response.status !== 404) throw new Error('Dashboard deletion failed');
   if (state.selected?.id === workSession.id) sheet.close();
   await loadWorkSessions();
 }
@@ -385,8 +396,12 @@ function createCard(workSession, unread) {
   } else {
     deleteButton.addEventListener('click', async (event) => {
       event.stopPropagation();
+      const point = { x: event.clientX, y: event.clientY };
+      // The second half of a double-click is one instruction, not two: without this the dialog opens
+      // again for whichever card slid into those pixels while the first one was being read.
+      if (isRepeatedDeleteClick(confirmedDelete, point)) return;
       try {
-        await deleteWorkSession(workSession);
+        await deleteWorkSession(workSession, point);
       } catch {
         document.querySelector('#board-note').textContent = 'The local dashboard could not delete that work session.';
       }

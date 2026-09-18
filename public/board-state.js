@@ -116,6 +116,27 @@ export function toggleLaneCollapse(collapsedIds, workSessionIds) {
   return next;
 }
 
+// Deleting a card is confirmed with a native modal dialog, and the renderer is blocked for as long as
+// that dialog is on screen. A second click — the stray half of a double-click, or a click that was
+// already on its way when the dialog opened — waits in the input queue and is replayed the moment the
+// dialog closes. By then the deleted card is gone and the board has repainted, so the click is
+// hit-tested against a board that no longer holds what the human aimed at. Cards share one height, so
+// the next card's Delete button sits at exactly those pixels: without a guard, one gesture asks the
+// human to confirm two deletions, the second one for a card they never pointed at.
+//
+// One gesture therefore earns one confirmation. A repeat click at the same point, inside the burst, is
+// the same instruction arriving twice; a click anywhere else is a new one, however fast it comes. The
+// window spans the slowest double-click Chrome still recognizes, and the radius is small enough that
+// no two Delete buttons are ever inside it.
+export const DELETE_GESTURE_MS = 1000;
+export const DELETE_GESTURE_RADIUS_PX = 8;
+
+export function isRepeatedDeleteClick(previous, point, now = Date.now()) {
+  if (!previous) return false;
+  if (now - previous.at > DELETE_GESTURE_MS) return false;
+  return Math.hypot(point.x - previous.x, point.y - previous.y) <= DELETE_GESTURE_RADIUS_PX;
+}
+
 // One banner per arrival in Attention. An agent that posts twice while its card waits has not
 // arrived twice, so the latch is what stops a banner on every poll. Acknowledging a card releases
 // its latch (the next plan no longer sees it as unread) but opening it deliberately does not, and
