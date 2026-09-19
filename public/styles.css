@@ -304,5 +304,15 @@ a.sheet-fact-value { color: var(--accent); }
 .session-frame .sheet-close { position: static; }
 .session-frame iframe { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--bg); }
 
+/* The same surface as the sheet, sized for five facts and a sentence. An agent with no recorded
+   link has nothing to open, so the board answers the Open button itself rather than sending the
+   human to a page whose only job is to say so. */
+.session-reference { width: min(540px, calc(100% - 32px)); }
+.session-reference h2 { font: 500 25px/1.15 var(--font-ui); letter-spacing: -.02em; }
+.session-reference .sheet-summary { margin-bottom: 20px; font-size: 15px; }
+.session-reference .sheet-fact { grid-template-columns: 108px minmax(0, 1fr); }
+.reference-hint { margin: 22px 0 0; color: var(--muted); font: 11px/1.6 var(--font-mono); }
+.reference-hint code { color: var(--accent); }
+
 @media (max-width: 1080px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .shell { width: min(100% - 24px, 620px); padding-top: 10px; } .masthead { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; } .wordmark { grid-column: 1; grid-row: 1; } .clock-block { grid-column: 2; grid-row: 1; min-width: 104px; } .signal-strip { grid-column: 1 / -1; grid-row: 2; width: 100%; grid-template-columns: repeat(3, 1fr); } .signal-strip > p { grid-column: 1 / -1; min-height: 60px; padding-left: 18px; } .masthead-tools { grid-column: 1 / -1; grid-row: 3; justify-items: start; } .install-control { min-width: 0; } .board { grid-template-columns: 1fr; } .session-sheet article { padding: 27px 22px; } .next-step { margin-inline: -22px; padding-inline: 22px; } }

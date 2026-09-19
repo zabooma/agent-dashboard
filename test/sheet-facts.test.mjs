@@ -34,9 +34,12 @@ test('the clipboard fallback survives the sheet being a modal dialog', () => {
   assert.match(app, /document\.execCommand\('copy'\)/, 'the fallback path should still exist for insecure origins');
   assert.match(
     app,
-    /\(document\.querySelector\('dialog\[open\]'\) \?\? document\.body\)\.append\(field\)/,
+    /anchor\?\.closest\('dialog\[open\]'\) \?\? document\.querySelector\('dialog\[open\]'\) \?\? document\.body/,
     'the scratch field must be anchored inside the open dialog, not inert <body>',
   );
+  // With the reference panel stacked over the sheet there are two open dialogs, and the first one in
+  // the document is the inert one underneath — so the button itself has to name its dialog.
+  assert.match(app, /copyText\(value, button\)/, 'the copy button should anchor the fallback to its own dialog');
 });
 
 // Which facts carry a button is the requirement, not an accident of rendering: exactly the three

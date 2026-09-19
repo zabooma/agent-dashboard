@@ -142,6 +142,17 @@
       <iframe id="session-frame-view" title="Live agent session" referrerpolicy="no-referrer"></iframe>
     </dialog>
 
+    <dialog class="session-sheet session-reference" id="session-reference" aria-labelledby="reference-title">
+      <article>
+        <button class="sheet-close" id="reference-close" type="button" aria-label="Close session reference">&times;</button>
+        <p class="eyebrow">OPEN SESSION</p>
+        <h2 id="reference-title">This agent has no verified app link.</h2>
+        <p class="sheet-summary" id="reference-lede"></p>
+        <dl class="sheet-facts" id="reference-facts"></dl>
+        <p class="reference-hint">A missing value can be recorded with <code>register_agent</code> or <code>update_agent_progress</code>.</p>
+      </article>
+    </dialog>
+
     <template id="session-card-template">
       <article class="session-card">
         <button class="card-main" type="button">

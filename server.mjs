@@ -394,9 +394,13 @@ const fallbackScript = `
       }, 1600);
     });
   });
+
 })();
 `.trim();
 
+// The board answers its own Open button for a link-less agent, so nobody is sent here by a click on
+// a card. This page is for a URL that travelled: the openUrl an MCP result hands back, pasted into a
+// terminal or a message. It is a page, so it goes back to the board the ordinary way.
 function openFallback(workSession, agent) {
   const rows = [
     referenceRow('Agent', agent.name, 'No agent name was registered.'),

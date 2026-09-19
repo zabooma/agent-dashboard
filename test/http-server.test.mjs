@@ -207,6 +207,27 @@ test('the open fallback resolves the theme with the board rule', async () => {
   }
 });
 
+// Nothing on the board sends a human here any more, but the openUrl an MCP result hands back does
+// travel — into a terminal, a message, another agent's summary. Followed from there, this page is
+// the only surface that carries the reference, so it still has to lead back to the board.
+test('the standalone reference page still leads back to the board', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'agent-dashboard-open-'));
+  const dataPath = path.join(directory, 'dashboard.json');
+  const store = new DashboardStore(dataPath);
+  const workSession = await store.createWorkSession({ title: 'Resume without a link' });
+  const { agent } = await store.registerAgent(workSession.id, { provider: 'claude', role: 'implementer' });
+  const { child, baseUrl } = await startDashboard(dataPath);
+
+  try {
+    const html = await fetch(`${baseUrl}/open/${workSession.id}/${agent.id}`).then((response) => response.text());
+    assert.match(html, /<a href="\/">Return to dashboard<\/a>/, 'the way back should be a plain link to the board');
+    assert.doesNotMatch(html, /window\.close\(\)/, 'a page reached by its own URL is not a tab the board opened');
+  } finally {
+    await stopDashboard(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 // A deep link is only useful if the redirector will actually follow it. The docs name the exact
 // links an agent should register, so a scheme documented but not allow-listed would hand every
 // card of that provider an Open button that goes nowhere.

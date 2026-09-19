@@ -82,6 +82,9 @@ const sessionFrame = document.querySelector('#session-frame');
 const sessionFrameTitle = document.querySelector('#session-frame-title');
 const sessionFrameExternal = document.querySelector('#session-frame-external');
 const sessionFrameView = document.querySelector('#session-frame-view');
+const sessionReference = document.querySelector('#session-reference');
+const sessionReferenceLede = document.querySelector('#reference-lede');
+const sessionReferenceFacts = document.querySelector('#reference-facts');
 const themeSwitch = document.querySelector('.theme-switch');
 const themeInputs = [...document.querySelectorAll('input[name="theme"]')];
 
@@ -126,6 +129,22 @@ function openSessionFrame(workSession, agent) {
   sessionFrame.showModal();
 }
 
+// An agent with no recorded link has nothing to hand off to, and everything its reference page
+// prints — provider, session name, session id, worktree — is already on the board. Opening a tab to
+// be told there is no link, and then having to close that tab again, is the long way round to five
+// facts the card is holding. /open/… stays a real page for anyone who arrives with its URL.
+function showSessionReference(workSession, agent) {
+  sessionReferenceLede.textContent = `Open this agent in ${agent.provider} and resume from the saved session reference.`;
+  sessionReferenceFacts.replaceChildren(
+    createFactRow('Agent', agent.name, { missing: 'no agent name was registered' }),
+    createFactRow('Provider', agent.provider, { missing: 'no provider recorded' }),
+    createFactRow('Session name', agent.sessionName ?? null, { missing: 'no session name was registered' }),
+    createFactRow('Session ID', agent.providerSessionId ?? null, { missing: 'no provider session reference was registered', copyable: true }),
+    createFactRow('Worktree', workSession.worktree ?? null, { missing: 'no worktree recorded', copyable: true }),
+  );
+  sessionReference.showModal();
+}
+
 function createAgentOpenLink(workSession, agent, className = '') {
   const open = document.createElement('a');
   open.className = className;
@@ -149,13 +168,22 @@ function createAgentOpenLink(workSession, agent, className = '') {
       event.preventDefault();
       openSessionFrame(workSession, agent);
     });
-  } else {
+  } else if (agent.sessionUrl) {
     // A custom scheme (codex:, vscode:, …) has to be navigated to directly. The OS handoff
     // is tied to the activating click, and routing it through /open/… gives the browser a
-    // redirect to act on instead, which it may swallow. /open/… stays the target for an
-    // agent with no recorded link, so its reference page still frees the session id.
-    if (agent.sessionUrl) open.href = agent.sessionUrl;
+    // redirect to act on instead, which it may swallow.
+    open.href = agent.sessionUrl;
     open.textContent = 'Open ↗';
+  } else {
+    // Nothing to open: the saved reference is the whole answer, and it opens in place. The anchor
+    // keeps pointing at /open/… so a modified or middle click still gets the standalone page.
+    open.textContent = 'Open ⧉';
+    open.title = 'No verified app link: show the saved session reference';
+    open.addEventListener('click', (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      showSessionReference(workSession, agent);
+    });
   }
   return open;
 }
@@ -506,7 +534,7 @@ function allMessages(workSession) {
 // The clipboard API needs a secure context, and the board can be reached over a LAN address where
 // `navigator.clipboard` does not exist. The textarea path is what keeps the copy buttons working
 // there — a copy control that silently does nothing is worse than no button.
-async function copyText(value) {
+async function copyText(value, anchor = null) {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(value);
@@ -522,8 +550,10 @@ async function copyText(value) {
   field.style.top = '-1000px';
   // The sheet is a modal <dialog>, which makes everything outside it inert — and a selection inside
   // an inert subtree is empty, so a scratch field parked in <body> copies nothing while
-  // `execCommand('copy')` still reports success. Anchor it inside the open dialog instead.
-  (document.querySelector('dialog[open]') ?? document.body).append(field);
+  // `execCommand('copy')` still reports success. Anchor it inside the dialog the human clicked in:
+  // with the reference panel stacked over the sheet, the first open dialog in the document is the
+  // inert one underneath.
+  (anchor?.closest('dialog[open]') ?? document.querySelector('dialog[open]') ?? document.body).append(field);
   field.select();
   let copied = false;
   try {
@@ -543,7 +573,7 @@ function createCopyButton(label, value) {
   button.title = `Copy ${label}`;
   button.setAttribute('aria-label', `Copy ${label}`);
   button.addEventListener('click', async () => {
-    const copied = await copyText(value);
+    const copied = await copyText(value, button);
     button.dataset.copied = String(copied);
     button.textContent = copied ? 'Copied' : 'Copy failed';
     button.setAttribute('aria-label', copied ? `Copied ${label}` : `Could not copy ${label}`);
@@ -787,6 +817,8 @@ document.querySelector('#sheet-close').addEventListener('click', () => sheet.clo
 sheet.addEventListener('click', (event) => { if (event.target === sheet) sheet.close(); });
 document.querySelector('#session-frame-close').addEventListener('click', () => sessionFrame.close());
 sessionFrame.addEventListener('click', (event) => { if (event.target === sessionFrame) sessionFrame.close(); });
+document.querySelector('#reference-close').addEventListener('click', () => sessionReference.close());
+sessionReference.addEventListener('click', (event) => { if (event.target === sessionReference) sessionReference.close(); });
 // Dropping the src on close stops the embedded session, its streams, and its polling.
 sessionFrame.addEventListener('close', () => sessionFrameView.removeAttribute('src'));
 updateClock();
