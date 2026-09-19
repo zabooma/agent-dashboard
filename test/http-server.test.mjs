@@ -206,3 +206,44 @@ test('the open fallback resolves the theme with the board rule', async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+// A deep link is only useful if the redirector will actually follow it. The docs name the exact
+// links an agent should register, so a scheme documented but not allow-listed would hand every
+// card of that provider an Open button that goes nowhere.
+test('every deep link the docs tell an agent to register is one the board opens', async () => {
+  const docs = ['.agents/skills/agent-dashboard/SKILL.md', 'README.md'];
+  const schemes = new Map();
+  for (const doc of docs) {
+    const text = await readFile(path.join(projectRoot, doc), 'utf8');
+    for (const [, link, scheme] of text.matchAll(/`(([a-z][a-z0-9+.-]*):\/\/[^`\s]+)`/g)) {
+      if (!schemes.has(scheme)) schemes.set(scheme, { doc, link });
+    }
+  }
+  assert.ok(schemes.has('claude'), 'the docs should name the Claude Code deep link');
+  assert.ok(schemes.has('codex'), 'the docs should name the Codex deep link');
+
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'agent-dashboard-scheme-'));
+  const dataPath = path.join(directory, 'dashboard.json');
+  const store = new DashboardStore(dataPath);
+  const workSession = await store.createWorkSession({ title: 'Open every documented link' });
+  const registered = [];
+  for (const [scheme, { doc, link }] of schemes) {
+    // The documented forms carry <placeholders>, which are not part of a real recorded link.
+    const sessionUrl = link.replaceAll(/<[^>]+>/g, 'documented-session-id');
+    const { agent } = await store.registerAgent(workSession.id, { provider: 'other', role: 'implementer', sessionUrl });
+    registered.push({ scheme, doc, sessionUrl, agentId: agent.id });
+  }
+  const { child, baseUrl } = await startDashboard(dataPath);
+
+  try {
+    for (const { scheme, doc, sessionUrl, agentId } of registered) {
+      const response = await fetch(`${baseUrl}/open/${workSession.id}/${agentId}`, { redirect: 'manual' });
+      await response.arrayBuffer();
+      assert.equal(response.status, 302, `${doc} documents ${scheme}: but the board will not open it`);
+      assert.equal(response.headers.get('location'), sessionUrl);
+    }
+  } finally {
+    await stopDashboard(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});

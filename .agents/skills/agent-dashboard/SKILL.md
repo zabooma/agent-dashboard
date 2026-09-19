@@ -23,13 +23,17 @@ Save the returned `workSession.id`. If another agent is already working on the s
 
 Each participating agent calls `register_agent` with its own provider, role, and provider session reference. The roles are `implementer`, `reviewer`, `researcher`, `tester`, `coordinator`, or `other`. Save the returned `agent.id` and update only that agent's record.
 
-Always record the provider session reference, not only a URL:
+Always record the provider session reference, not only a URL. Resolve all three fields *before* the `register_agent` call, so the card is navigable from its first paint; a link left for later is the one that never gets recorded:
 
-- `providerSessionId` — the id the provider resumes this conversation from. DSH reads `$DSH_SESSION_ID`; Codex reads `$CODEX_SESSION_ID`, falling back to `$CODEX_THREAD_ID`. Never guess one.
+- `providerSessionId` — the id the provider resumes this conversation from. DSH reads `$DSH_SESSION_ID`; Codex reads `$CODEX_SESSION_ID`, falling back to `$CODEX_THREAD_ID`; Claude Code reads `$CLAUDE_CODE_SESSION_ID`, which is what `claude --resume <id>` takes. Never guess one.
 - `sessionName` — the session's human-readable name or title, only when the host actually shows one.
 - `sessionUrl` — a real, verified browser URL or provider deep link. DSH: read `$DSH_WEB_URL` in the shell and set it on every card; that is the local Web GUI serving you, so never guess a port. The card's Open button then reaches the GUI instead of the resume-reference page. It opens the GUI itself, not the exact conversation — the Web GUI has no per-session route — and it needs the browser's existing GUI cookie, so a fresh browser profile gets a 401.
 
 Codex: the Codex session id *is* the thread id, so set `providerSessionId` to it and `sessionUrl` to `codex://threads/<session-id>`. Codex Desktop registers the `codex:` scheme and the dashboard already allows it, so Open switches the running desktop app to that thread. Verified 2026-09-16 on codex-cli 0.153.4 with Codex Desktop 26.901.51231. Without the desktop app, the CLI equivalent is `codex resume <session-id>`.
+
+Claude Code: ask the host for the link rather than building one. In the desktop app, call `mcp__ccd_session_mgmt__get_session` with `session_id: "self"` and copy its `link` field verbatim into `sessionUrl` — a `claude://claude.ai/epitaxy/<host-session-id>` deep link that reopens this exact conversation. The same call returns `title`, which is the name the app shows in its sidebar, so use it for `sessionName` instead of inventing one. The dashboard already allows the `claude:` scheme, so Open hands off to the running desktop app. Verified 2026-09-19 on Claude Code 2.1.275 in Claude Desktop 2.2553.1.
+
+Do not assemble that link by hand. The id inside it is the host's `local_…` session id, which is *not* `$CLAUDE_CODE_SESSION_ID`, and the app rejects a link carrying the wrong one. Two cases leave you with no URL, and both are fine: a terminal or SDK session has no `mcp__ccd_session_mgmt__*` tools at all, and an organisation that disables app links makes the desktop host omit `link`. Register the `providerSessionId` alone and leave `sessionUrl` unset — the card's own reference page still surfaces the resume id.
 
 Never infer a native URL scheme. If you learn the reference after registering, record it with `update_agent_progress`.
 
