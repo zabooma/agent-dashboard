@@ -69,6 +69,8 @@ If a session stops abruptly, no dashboard protocol can update it afterward. The 
 
 Use `update_work_session` only when information shared by all participants changes: the title, issue metadata, project, worktree, branch, or overall summary. Do not mark the whole work session complete merely because one reviewer or implementer has finished; the dashboard derives the card's state from its participants.
 
+A human can also move a card between lanes by hand when the agents have stopped moving it. That placement arrives as `laneOverride` on the work session, it decides only where the card is drawn, and only the human clears it — the card keeps reporting the status you gave it. Keep reporting your own status as usual rather than trying to move the card back.
+
 ## Finish honestly
 
 Mark an agent `done` only after its own assigned work is actually complete. If it needs human review, a decision, or another agent's action, use `handoff`, `needs_input`, or `blocked` instead and say what is needed.

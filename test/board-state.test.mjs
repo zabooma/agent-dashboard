@@ -4,11 +4,13 @@ import {
   acknowledge,
   acknowledgeAll,
   attentionStamp,
+  effectiveLane,
   emptyReadState,
   isStalled,
   isUnread,
   laneCollapseState,
   laneFor,
+  laneOverrideFor,
   notificationPlan,
   parseReadState,
   pruneReadState,
@@ -19,6 +21,7 @@ import {
 } from '../public/board-state.js';
 
 const card = (id, status, updatedAt) => ({ id, status, updatedAt, title: `Card ${id}` });
+const moved = (workSession, lane) => ({ ...workSession, laneOverride: { lane, at: '2026-09-16T11:00:00.000Z' } });
 const NOON = Date.parse('2026-09-16T12:00:00.000Z');
 const ago = (milliseconds) => new Date(NOON - milliseconds).toISOString();
 
@@ -30,6 +33,44 @@ test('every status maps to a lane, and an unknown one still asks for a human', (
   assert.equal(laneFor('handoff'), 'handoff');
   assert.equal(laneFor('done'), 'done');
   assert.equal(laneFor('status-invented-later'), 'attention', 'a status the page does not know must not vanish from the board');
+});
+
+// A human placing a card by hand is the only other source of a lane, and it only ever decides
+// placement: `effectiveLane` is the status mapping with their choice in front of it, nothing more.
+test('a hand-made placement decides the lane, and only the lane', () => {
+  const board = card('a', 'needs_input', '2026-09-16T10:00:00.000Z');
+  assert.equal(effectiveLane(board), 'attention', 'with no placement the statuses decide');
+  assert.equal(effectiveLane(moved(board, 'done')), 'done');
+  assert.equal(effectiveLane(moved(board, 'active')), 'active');
+  assert.equal(moved(board, 'done').status, 'needs_input', 'the status the agents reported is untouched');
+
+  // A lane the page does not know is not a lane it can draw: the agents' own is the honest fallback,
+  // and the card stays on the board.
+  assert.equal(laneOverrideFor({ laneOverride: { lane: 'recycling' } }), null);
+  assert.equal(effectiveLane({ ...board, laneOverride: { lane: 'recycling' } }), 'attention');
+  assert.equal(laneOverrideFor({ laneOverride: null }), null);
+  assert.equal(laneOverrideFor(undefined), null);
+});
+
+// Moving a card out of Attention is the human taking it off their own list, so it stops asking — and
+// the stamp it carries afterwards is still the agents' clock, not the moment of the move.
+test('a card the human moved is asked about where it now is', () => {
+  const asked = card('a', 'needs_input', '2026-09-16T10:00:00.000Z');
+  assert.equal(attentionStamp(asked), '2026-09-16T10:00:00.000Z');
+  assert.equal(attentionStamp(moved(asked, 'active')), null, 'the human has answered it by moving it');
+  assert.equal(attentionStamp(moved(asked, 'handoff')), null);
+  assert.equal(
+    attentionStamp(moved(card('b', 'working', '2026-09-16T10:00:00.000Z'), 'attention')),
+    '2026-09-16T10:00:00.000Z',
+    'and a card they moved in asks until it moves again',
+  );
+});
+
+test('a card the human moved out of Attention is not new, however stale its read record is', () => {
+  const read = acknowledge(emptyReadState(), card('a', 'needs_input', '2026-09-16T10:00:00.000Z'));
+  const parked = moved(card('a', 'needs_input', '2026-09-16T11:00:00.000Z'), 'done');
+  assert.equal(isUnread(read, parked), false, 'it is still asking for a human by status, and no longer by lane');
+  assert.equal(notificationPlan(read, [parked]).send.length, 0, 'so it must not raise a banner either');
 });
 
 test('only an attention card carries a stamp', () => {
@@ -148,6 +189,16 @@ test('only a card still claiming to be working can be stalled', () => {
   for (const status of ['needs_input', 'blocked', 'stale', 'handoff', 'done']) {
     assert.equal(isStalled(card(status, status, quiet), NOON), false, `${status} has already said what it wants`);
   }
+});
+
+// A human who moved this card has already looked at it and decided where it belongs, so the derived
+// "this went quiet" chip has nothing left to add — and second-guessing the one signal on the board
+// that is not a guess is how a human stops trusting the chips.
+test('a card the human placed by hand is not second-guessed about going quiet', () => {
+  const quiet = card('a', 'working', ago(STALL_AFTER_MS + 60_000));
+  assert.equal(isStalled(quiet, NOON), true, 'left alone, the silence is still the evidence it was');
+  assert.equal(isStalled(moved(quiet, 'handoff'), NOON), false);
+  assert.equal(isStalled(moved(quiet, 'done'), NOON), false, 'a card filed by hand does not nag');
 });
 
 test('the stall threshold is the boundary, not an approximation of it', () => {

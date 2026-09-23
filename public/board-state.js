@@ -7,6 +7,11 @@
 //   * "the human has not looked at this one yet" lives in the read state below;
 //   * "this card has gone quiet" is derived from elapsed time by `isStalled`, and is advisory only.
 // A card the human just read is still asking for something until it actually moves.
+//
+// A fourth fact, added later, sits beside them: "a human put this card here by hand" is the
+// laneOverride on the work session. It decides placement and nothing else — the status, the stamp,
+// and the stall flag all keep reporting what the agents said, so a card a human parked in Done never
+// reads as a card an agent finished.
 
 // Statuses that put a card in the human's lane. The page, the lane headings, and the banner rule all
 // read this one map, so "attention" cannot come to mean two different things.
@@ -21,8 +26,26 @@ export const laneByStatus = {
 
 export const ATTENTION_LANE = 'attention';
 
+// The four columns, in board order. The markup carries the same four in index.html and
+// lib/dashboard-store.mjs validates against its own copy for the HTTP endpoint;
+// test/lane-override.test.mjs holds all three together.
+export const LANES = ['attention', 'active', 'handoff', 'done'];
+
 export function laneFor(status) {
   return laneByStatus[status] ?? ATTENTION_LANE;
+}
+
+// The lane a human chose by hand, or null while the agents' statuses decide. An unrecognised lane is
+// treated as no override at all: a card whose column this page does not know must still be drawn
+// somewhere, and the agents' own lane is the honest fallback.
+export function laneOverrideFor(workSession) {
+  const lane = workSession?.laneOverride?.lane;
+  return LANES.includes(lane) ? lane : null;
+}
+
+// Where the card is drawn. Placement is the only thing the override decides.
+export function effectiveLane(workSession) {
+  return laneOverrideFor(workSession) ?? laneFor(workSession.status);
 }
 
 // A card can also be stuck without saying so. The board cannot see a provider process — there is no
@@ -35,8 +58,13 @@ export const STALL_AFTER_MS = 15 * 60_000;
 // Done has said what it wants, and re-flagging it would be noise. This never moves a card between
 // lanes. A heuristic that could promote a card to Attention would collapse "the agent says it needs
 // you" into "the agent has not typed for a while", and Attention is the lane the human trusts.
+//
+// A card a human placed by hand is exempt for the same reason: they have already looked at that card
+// and decided where it belongs, so a derived "this went quiet" chip is second-guessing the one signal
+// on the board that is not a guess.
 export function isStalled(workSession, now = Date.now()) {
   if (workSession.status !== 'working') return false;
+  if (laneOverrideFor(workSession)) return false;
   const updatedAt = Date.parse(workSession.updatedAt ?? '');
   if (Number.isNaN(updatedAt)) return false;
   return now - updatedAt >= STALL_AFTER_MS;
@@ -49,8 +77,12 @@ export function emptyReadState() {
 // The update stamp a card is asking about, or null when it is not asking for anything. Storing null
 // rather than deleting on acknowledgement is what lets a record survive: no later stamp can compare
 // greater than an absent one, so an acknowledged card stays read until the card actually moves again.
+//
+// Being asked is a lane, not a status, so a card the human moved out of Attention stops being news the
+// moment it lands elsewhere — that is what the move was for. The stamp itself still comes from the
+// agents' clock: moving a card is not agent activity, so it neither raises nor lowers it.
 export function attentionStamp(workSession) {
-  if (laneFor(workSession.status) !== ATTENTION_LANE) return null;
+  if (effectiveLane(workSession) !== ATTENTION_LANE) return null;
   return workSession.updatedAt ?? null;
 }
 

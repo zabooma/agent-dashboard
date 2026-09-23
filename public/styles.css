@@ -199,6 +199,11 @@ button { cursor: pointer; }
 .stall-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 20px; padding: 0 7px; border: 1px dashed var(--amber); color: var(--amber); font: 700 10px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
 .stall-chip[hidden] { display: none; }
 .stall-chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* The one chip on a card that is not an agent's claim: a human put this card in this lane by hand.
+   Deliberately the quietest of the three — a hairline box in the card's own text colour rather than
+   the amber of a card the human is being asked about — because it reports a decision already made. */
+.moved-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 0 7px; border: 1px solid var(--line-stronger); color: var(--fg); background: var(--overlay); font: 700 10px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.moved-chip[hidden] { display: none; }
 .new-badge { display: inline-flex; align-items: center; gap: 5px; min-height: 20px; padding: 0 7px; color: var(--bg); background: var(--amber); font: 700 10px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
 /* `hidden` cannot win against the display above, so the badge states its own off state. */
 .new-badge[hidden] { display: none; }
@@ -230,7 +235,7 @@ button { cursor: pointer; }
 .card-collapse > span:first-child, .lane-collapse > span:first-child { transition: transform .15s ease; }
 .card-collapse:hover, .lane-collapse:hover { border-color: var(--accent); color: var(--accent); }
 .session-card.is-collapsed .card-collapse > span:first-child, .lane.is-collapsed .lane-collapse > span:first-child { transform: rotate(-90deg); }
-.session-card.is-collapsed .card-details, .session-card.is-collapsed .card-footer { display: none; }
+.session-card.is-collapsed .card-details, .session-card.is-collapsed .card-footer, .session-card.is-collapsed .card-move { display: none; }
 .card-main:focus-visible, .card-collapse:focus-visible, .lane-collapse:focus-visible { outline: 1px solid var(--accent); outline-offset: -4px; }
 .card-footer { display: flex; justify-content: space-between; gap: 10px; align-items: center; min-height: 45px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--overlay-foot); }
 .next-action { min-width: 0; overflow: hidden; color: var(--muted); font: 10px/1.2 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
@@ -240,6 +245,38 @@ button { cursor: pointer; }
 .delete-session { padding: 0; border: 0; color: var(--muted); font: 700 10px/1 var(--font-mono); letter-spacing: .04em; background: transparent; cursor: pointer; }
 .delete-session:hover { color: var(--red); }
 .delete-session:focus-visible { outline: 1px solid var(--red); outline-offset: 4px; color: var(--red); }
+/* The human's own control in that row: the agents move their cards when they report, and this is what
+   moves one when they do not. */
+.move-session { padding: 0; border: 0; color: var(--accent); font: 700 10px/1 var(--font-mono); letter-spacing: .04em; background: transparent; cursor: pointer; }
+.move-session:hover { color: var(--fg); }
+.move-session[aria-expanded='true'] { color: var(--fg); text-decoration: underline; }
+.move-session:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
+
+/* The panel is part of the card's own flow rather than a floating menu. `.session-card` clips its
+   overflow, so a popover anchored inside the footer would be cut off, and one lifted out of the card
+   would have to fight the lane's stacking to stay above its neighbours. Growing the card by two rows
+   of lane targets costs nothing: only the card being moved grows, and only while it is open. */
+.card-move { display: grid; gap: 8px; padding: 11px 12px 12px; border-top: 1px solid var(--line); background: var(--overlay); }
+/* `display: grid` above would otherwise beat the `hidden` attribute, exactly as it does for the chips. */
+.card-move[hidden] { display: none; }
+.card-move-label { margin: 0; color: var(--muted); font: 700 9px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+/* Two columns, not four: at the four-lane band a lane is 250–330px wide, and four targets on one row
+   would ellipsize the names the human is choosing between. */
+.card-move-lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.move-target { min-width: 0; overflow: hidden; padding: 7px 8px; border: 1px solid var(--line-strong); color: var(--muted); background: transparent; font: 700 9px/1 var(--font-mono); letter-spacing: .06em; text-align: left; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.move-target:hover { border-color: var(--accent); color: var(--accent); }
+.move-target:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+/* The lane the card is already in is marked, not hidden: the human has to see where it is to know
+   what moving it would change. It carries the lane's own colour, the same one its heading uses. */
+.move-target[aria-current='true'] { border-color: var(--line-stronger); color: var(--fg); background: var(--overlay-foot); }
+.move-target[data-move-to='attention'][aria-current='true'] { border-color: var(--amber); color: var(--amber); }
+.move-target[data-move-to='active'][aria-current='true'] { border-color: var(--accent); color: var(--accent); }
+.move-target[data-move-to='handoff'][aria-current='true'] { border-color: var(--purple); color: var(--purple); }
+.move-target[data-move-to='done'][aria-current='true'] { border-color: var(--blue); color: var(--blue); }
+.card-move-reset { justify-self: start; padding: 6px 8px; border: 1px dashed var(--line-stronger); color: var(--muted); background: transparent; font: 700 9px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.card-move-reset[hidden] { display: none; }
+.card-move-reset:hover { border-style: solid; border-color: var(--accent); color: var(--accent); }
+.card-move-reset:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 .empty-lane { margin: 8px; padding: 25px 16px; border: 1px dashed var(--line); color: var(--muted); font: 500 13px/1.45 var(--font-ui); }

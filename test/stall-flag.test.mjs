@@ -36,10 +36,16 @@ test('the topline wraps rather than printing the badge over the timestamp', () =
 // The design decision this feature turns on: the flag is advisory. If it could choose a lane, "the
 // agent has not typed for a while" would become indistinguishable from "the agent needs you", and a
 // long build would page the human — which is exactly what the flag is not allowed to do.
+//
+// The expression below moved on 2026-09-23, when a human gained the ability to place a card by hand:
+// the lane is now `effectiveLane`, which is the status mapping with the human's own override in front
+// of it. That is a second source of a lane, so the old `laneFor(workSession.status)` pin could not
+// stand — but the rule this test exists for is unchanged, and the override is not a heuristic: it is a
+// deliberate act by the person the board is for. What must never appear here is the stall flag.
 test('the stall flag never picks a lane', () => {
   assert.ok(render, 'render should exist');
-  assert.doesNotMatch(render, /isStalled/, 'lanes are chosen from the status alone');
-  assert.match(render, /laneFor\(workSession\.status\)/, 'the lane mapping must stay the only source of a lane');
+  assert.doesNotMatch(render, /isStalled/, 'lanes are chosen from the status or the human, never from silence');
+  assert.match(render, /effectiveLane\(workSession\)/, 'the lane mapping must stay the only source of a lane');
 });
 
 test('the chip is driven by the shared pure rule', () => {

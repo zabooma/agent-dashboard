@@ -207,6 +207,84 @@ test('the open fallback resolves the theme with the board rule', async () => {
   }
 });
 
+// A card the agents never move is the reason this endpoint exists. The human's placement is stored
+// beside the card, not written into an agent: the status the agents reported has to survive the move,
+// or the board would be printing the human's decision as the session's own report.
+test('the board moves one card to a lane the human chose, and leaves its agents alone', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'agent-dashboard-move-'));
+  const dataPath = path.join(directory, 'dashboard.json');
+  const store = new DashboardStore(dataPath);
+  const moved = await store.createWorkSession({ title: 'Codex stopped reporting hours ago' });
+  const { agent } = await store.registerAgent(moved.id, {
+    name: 'Codex / silent pass',
+    provider: 'codex',
+    role: 'implementer',
+    status: 'working',
+  });
+  const untouched = await store.createWorkSession({ title: 'A card nobody moved' });
+  const { child, baseUrl } = await startDashboard(dataPath);
+  const move = (id, body) => fetch(`${baseUrl}/api/work-sessions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  try {
+    const response = await move(moved.id, { lane: 'handoff' });
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.workSession.laneOverride.lane, 'handoff');
+    assert.ok(Date.parse(payload.workSession.laneOverride.at), 'a placement records when it was made');
+    assert.equal(payload.workSession.agents[0].status, 'working', 'the agent still reports what it reported');
+    assert.equal(payload.workSession.agents[0].id, agent.id);
+
+    // Written, not just echoed: the next read of the board has to agree with the answer.
+    const sessions = await fetch(`${baseUrl}/api/work-sessions`).then((read) => read.json());
+    const stored = sessions.workSessions.find((workSession) => workSession.id === moved.id);
+    assert.equal(stored.laneOverride.lane, 'handoff');
+    assert.equal(sessions.workSessions.find((workSession) => workSession.id === untouched.id).laneOverride, null);
+
+    // And handing the card back is the same request with nothing in it.
+    const cleared = await (await move(moved.id, { lane: null })).json();
+    assert.equal(cleared.workSession.laneOverride, null, 'null is how a card returns to its agents');
+    assert.equal(cleared.workSession.agents[0].status, 'working');
+  } finally {
+    await stopDashboard(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+// Every one of these is a request the human got wrong, and each has to leave the board exactly as it
+// was: a move that half-applies because a body was malformed is worse than one that is refused.
+test('a move that cannot be carried out says why and changes nothing', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'agent-dashboard-move-'));
+  const dataPath = path.join(directory, 'dashboard.json');
+  const store = new DashboardStore(dataPath);
+  const workSession = await store.createWorkSession({ title: 'Leave me where I am' });
+  const { child, baseUrl } = await startDashboard(dataPath);
+  const patch = (id, body) => fetch(
+    `${baseUrl}/api/work-sessions/${id}`,
+    { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body },
+  );
+
+  try {
+    const unknownLane = await patch(workSession.id, JSON.stringify({ lane: 'recycling' }));
+    assert.equal(unknownLane.status, 400);
+    assert.match((await unknownLane.json()).error, /attention, active, handoff, done/, 'the refusal should name the lanes there are');
+
+    assert.equal((await patch(workSession.id, JSON.stringify({ title: 'Renamed by a move' }))).status, 400, 'a body with no lane is not a move');
+    assert.equal((await patch(workSession.id, '{not json')).status, 400);
+    assert.equal((await patch('3f1c2f9e-0000-4000-8000-000000000000', JSON.stringify({ lane: 'done' }))).status, 404);
+    assert.equal((await fetch(`${baseUrl}/api/work-sessions/${workSession.id}`, { method: 'POST' })).status, 405, 'a move is a PATCH, and the board still refuses everything else');
+
+    const sessions = await fetch(`${baseUrl}/api/work-sessions`).then((read) => read.json());
+    assert.equal(sessions.workSessions.find((candidate) => candidate.id === workSession.id).laneOverride, null);
+  } finally {
+    await stopDashboard(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 // Nothing on the board sends a human here any more, but the openUrl an MCP result hands back does
 // travel — into a terminal, a message, another agent's summary. Followed from there, this page is
 // the only surface that carries the reference, so it still has to lead back to the board.

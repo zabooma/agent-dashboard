@@ -1,11 +1,12 @@
 import {
   acknowledge,
   acknowledgeAll,
+  effectiveLane,
   isRepeatedDeleteClick,
   isStalled,
   isUnread,
   laneCollapseState,
-  laneFor,
+  laneOverrideFor,
   notificationPlan,
   parseReadState,
   pruneReadState,
@@ -65,6 +66,9 @@ const state = {
   demo: new URLSearchParams(location.search).has('demo'),
   deferredInstallPrompt: null,
   collapsedWorkSessionIds: new Set(),
+  // Which card has its Move panel open. The board repaints every five seconds, so this is what lets
+  // an open panel survive a poll instead of folding itself up under the pointer.
+  openMovePanelId: null,
   readState: parseReadState(null),
   alerts: false,
   // Set from a notification click or a `?work-session=` link, consumed by the first load that can
@@ -204,6 +208,115 @@ async function deleteWorkSession(workSession, point) {
   // click replayed out of the dialog, can arrive here after the deletion has already happened.
   if (!response.ok && response.status !== 404) throw new Error('Dashboard deletion failed');
   if (state.selected?.id === workSession.id) sheet.close();
+  await loadWorkSessions();
+}
+
+// Moving a card by hand. The four columns this control offers are read back out of the markup the
+// board actually drew, in board order, rather than from a list here — a lane renamed in index.html is
+// renamed in the control too, and the two can never disagree about what the board holds.
+function laneTargets() {
+  return [...document.querySelectorAll('.lane')].map((lane) => ({
+    lane: lane.dataset.lane,
+    label: lane.querySelector('h2')?.textContent?.trim() || lane.dataset.lane,
+  }));
+}
+
+function setMovePanelOpen(card, open) {
+  const panel = card.querySelector('.card-move');
+  const button = card.querySelector('.move-session');
+  if (!panel || !button) return;
+  panel.hidden = !open;
+  button.setAttribute('aria-expanded', String(open));
+}
+
+function closeMovePanels() {
+  state.openMovePanelId = null;
+  document.querySelectorAll('.session-card').forEach((card) => setMovePanelOpen(card, false));
+}
+
+// One row per lane, with the card's current lane marked rather than hidden: the human needs to see
+// where it is to know what moving it would change.
+function buildMovePanel(workSession, panel) {
+  const current = effectiveLane(workSession);
+  panel.querySelector('.card-move-lanes').replaceChildren(...laneTargets().map(({ lane, label }) => {
+    const target = document.createElement('button');
+    target.type = 'button';
+    target.className = 'move-target';
+    // Deliberately not `data-lane`: a card lives inside a lane, so a lane-named attribute on a control
+    // sits *earlier* in the document than the column it names. `document.querySelector('[data-lane=…]')`
+    // then finds this button instead of the lane — which cost the board every lane after the first, and
+    // reported OFFLINE with one card drawn, on the throwaway board this was built against.
+    target.dataset.moveTo = lane;
+    target.textContent = label;
+    if (lane === current) {
+      target.setAttribute('aria-current', 'true');
+      target.setAttribute('aria-label', `${label}, the lane this card is in`);
+      target.title = `This card is already in ${label}.`;
+    } else {
+      target.setAttribute('aria-label', `Move this card to ${label}`);
+      target.title = `Move this card to ${label}`;
+    }
+    target.addEventListener('click', () => {
+      if (lane === effectiveLane(workSession)) {
+        closeMovePanels();
+        return;
+      }
+      void moveWorkSession(workSession, lane);
+    });
+    return target;
+  }));
+  const reset = panel.querySelector('.card-move-reset');
+  reset.hidden = !laneOverrideFor(workSession);
+  reset.title = 'Hand this card back to its agents, so their statuses decide its lane again.';
+  reset.addEventListener('click', () => void moveWorkSession(workSession, null));
+}
+
+function reportMoveFailure(error) {
+  const note = document.querySelector('#board-note');
+  if (error.status === 405) {
+    note.textContent = 'This dashboard process is older than the page and cannot move cards yet. Restart it, then reload.';
+    return;
+  }
+  if (error.status === 404) {
+    note.textContent = 'That card is no longer on the board.';
+    return;
+  }
+  note.textContent = 'The board could not move that card. It is still where you left it.';
+}
+
+// A move is a placement and nothing else: the request carries a lane, the server stores it beside the
+// card, and no agent is touched. Nothing is redrawn optimistically — the board repaints from the
+// server's answer, so a failed move leaves the card where the human found it rather than showing a
+// position it never took.
+async function moveWorkSession(workSession, lane) {
+  state.openMovePanelId = null;
+  if (state.demo) {
+    workSession.laneOverride = lane ? { lane, at: new Date().toISOString() } : null;
+  } else {
+    let payload = null;
+    try {
+      const response = await fetch(`/api/work-sessions/${encodeURIComponent(workSession.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lane }),
+      });
+      if (!response.ok) {
+        const error = new Error('Dashboard move failed');
+        error.status = response.status;
+        throw error;
+      }
+      payload = await response.json();
+    } catch (error) {
+      reportMoveFailure(error);
+      if (error.status === 404) await loadWorkSessions();
+      return;
+    }
+    workSession.laneOverride = payload.workSession?.laneOverride ?? null;
+  }
+  // A card the human just moved is not news to them: without this, one placed in Attention would
+  // arrive wearing the "New" badge the board raises for a card that got there on its own.
+  state.readState = acknowledge(state.readState, workSession);
+  persistReadState();
   await loadWorkSessions();
 }
 
@@ -393,6 +506,16 @@ function createCard(workSession, unread) {
   if (stalled) {
     stallChip.title = 'Still reporting working, but no agent has updated this card for a while. The session may have hit a limit or been stopped.';
   }
+  // A card a human placed by hand says so, in its own chip, next to the status chip that still reports
+  // what the agents said. Without it the board would quietly pass a human's placement off as an
+  // agent's own report — which is the one thing this board must never do.
+  const override = laneOverrideFor(workSession);
+  const movedChip = fragment.querySelector('.moved-chip');
+  movedChip.hidden = !override;
+  if (override) {
+    const laneName = laneTargets().find((target) => target.lane === override)?.label ?? override;
+    movedChip.title = `You moved this card to ${laneName} by hand ${relativeTime(workSession.laneOverride?.at ?? workSession.updatedAt)}. Agent updates will not move it back until you return it to them.`;
+  }
   fragment.querySelector('time').textContent = relativeTime(workSession.updatedAt);
   fragment.querySelector('.issue-label').textContent = `${issueLabel(workSession)} · ${workSession.project ?? 'local'}`;
   fragment.querySelector('h3').textContent = workSession.title;
@@ -435,6 +558,25 @@ function createCard(workSession, unread) {
       }
     });
   }
+  const moveButton = fragment.querySelector('.move-session');
+  const movePanel = fragment.querySelector('.card-move');
+  movePanel.id = `card-move-${workSession.id}`;
+  moveButton.setAttribute('aria-controls', movePanel.id);
+  moveButton.setAttribute('aria-label', `Move ${workSession.title} to another lane`);
+  buildMovePanel(workSession, movePanel);
+  moveButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const open = state.openMovePanelId !== workSession.id;
+    closeMovePanels();
+    if (open) {
+      state.openMovePanelId = workSession.id;
+      setMovePanelOpen(card, true);
+    }
+  });
+  // The panel is part of the card, so the board's own repaint closes it. State is what reopens it on
+  // the other side of a poll, which is the difference between a control that survives five seconds and
+  // one that folds itself up under the pointer.
+  if (state.openMovePanelId === workSession.id) setMovePanelOpen(card, true);
   main.addEventListener('click', () => showWorkSession(workSession));
   const collapsed = state.collapsedWorkSessionIds.has(workSession.id);
   setCardCollapsed(card, collapseButton, collapsed);
@@ -443,6 +585,8 @@ function createCard(workSession, unread) {
     const nextCollapsed = !card.classList.contains('is-collapsed');
     if (nextCollapsed) {
       state.collapsedWorkSessionIds.add(workSession.id);
+      // The footer is hidden while a card is collapsed, so its Move panel goes with it.
+      if (state.openMovePanelId === workSession.id) closeMovePanels();
     } else {
       state.collapsedWorkSessionIds.delete(workSession.id);
     }
@@ -464,10 +608,18 @@ function addEmptyState(lane, text) {
 
 // The board's own layout decides the lanes, so every lane the markup carries gets an entry even
 // when it holds nothing — an unknown status still lands somewhere, because `laneFor` defaults to
-// Attention rather than dropping the card.
+// Attention rather than dropping the card. A card a human placed by hand is grouped by that
+// placement: the override is the whole reason the control exists.
+//
+// Every lookup names the lane element, not just the attribute: a card sits inside a lane, so any
+// control inside a card that carries a lane name would be matched first for a lane that comes later.
+function laneElement(laneName) {
+  return document.querySelector(`.lane[data-lane="${laneName}"]`);
+}
+
 function groupSessionsByLane() {
   const sessionsByLane = new Map([...document.querySelectorAll('.lane')].map((lane) => [lane.dataset.lane, []]));
-  state.workSessions.forEach((workSession) => sessionsByLane.get(laneFor(workSession.status)).push(workSession));
+  state.workSessions.forEach((workSession) => sessionsByLane.get(effectiveLane(workSession)).push(workSession));
   return sessionsByLane;
 }
 
@@ -480,7 +632,7 @@ function groupSessionsByLane() {
 // it is without the control.
 function refreshLaneToggles(sessionsByLane) {
   sessionsByLane.forEach((workSessions, laneName) => {
-    const lane = document.querySelector(`[data-lane="${laneName}"]`);
+    const lane = laneElement(laneName);
     const button = lane?.querySelector('.lane-collapse');
     if (!button) return;
     const { total, allCollapsed } = laneCollapseState(state.collapsedWorkSessionIds, workSessions.map((workSession) => workSession.id));
@@ -500,7 +652,7 @@ function render() {
   const unread = new Set(unreadWorkSessions(state.readState, state.workSessions).map((workSession) => workSession.id));
   const sessionsByLane = groupSessionsByLane();
   sessionsByLane.forEach((workSessions, laneName) => {
-    const lane = document.querySelector(`[data-lane="${laneName}"]`);
+    const lane = laneElement(laneName);
     lane.querySelector('.lane-count').textContent = workSessions.length;
     if (workSessions.length === 0) {
       addEmptyState(lane, laneName === 'attention' ? 'Nothing is waiting on you.' : 'No work sessions in this lane.');
@@ -510,7 +662,9 @@ function render() {
   });
   refreshLaneToggles(sessionsByLane);
   const agents = state.workSessions.flatMap((workSession) => workSession.agents);
-  const attention = state.workSessions.filter((workSession) => laneFor(workSession.status) === 'attention').length;
+  // Counted by lane rather than by status, so the tally agrees with the columns the human is looking
+  // at: a card they moved out of Attention is one they have taken off that list themselves.
+  const attention = state.workSessions.filter((workSession) => effectiveLane(workSession) === 'attention').length;
   document.querySelector('#total-count').textContent = state.workSessions.length;
   document.querySelector('#active-count').textContent = agents.filter((agent) => agent.status === 'working').length;
   document.querySelector('#attention-count').textContent = attention;
@@ -811,6 +965,18 @@ document.querySelectorAll('.lane-collapse').forEach((button) => {
     state.collapsedWorkSessionIds = toggleLaneCollapse(state.collapsedWorkSessionIds, workSessionIds);
     render();
   });
+});
+
+// One move panel at a time, and it closes the way every other transient control does: Escape, or a
+// click that lands anywhere else. Both are delegated, because the panels themselves are rebuilt with
+// every poll and a listener bound to one of them would go with it.
+document.addEventListener('click', (event) => {
+  if (!state.openMovePanelId) return;
+  if (event.target.closest('.card-move') || event.target.closest('.move-session')) return;
+  closeMovePanels();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.openMovePanelId) closeMovePanels();
 });
 
 document.querySelector('#sheet-close').addEventListener('click', () => sheet.close());

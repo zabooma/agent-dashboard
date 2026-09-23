@@ -10,6 +10,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import {
   DashboardStore,
+  LANES,
   MESSAGE_KINDS,
   PROVIDERS,
   ROLES,
@@ -173,6 +174,7 @@ function createMcpServer() {
         'Call register_work_session once when the work begins, then register_agent once for each participating agent and retain both returned ids.',
         'Call update_agent_progress only for meaningful state changes. Use add_message for concise questions, blockers, reviews, or handoffs; never stream routine tool output.',
         'Each agent should record its provider session reference when it registers: providerSessionId, the id its provider uses to resume that conversation, plus sessionName when the host exposes a human-readable name. Never guess a session id or invent a URL.',
+        'A human can place a card in a lane by hand from the board; that placement travels as laneOverride on the work session, and only the human clears it. Keep reporting your own status as usual — the override does not change it.',
         `The local dashboard is ${dashboardUrl}.`,
       ].join(' '),
     },
@@ -280,6 +282,33 @@ function writeJson(response, statusCode, body) {
     'Cache-Control': 'no-store',
   });
   response.end(`${JSON.stringify(body)}\n`);
+}
+
+// A request the human got wrong, as opposed to one this process failed at. The two are answered
+// differently on purpose: a bad lane name is a 400 with the list, not a 500 that blames the board.
+class HttpError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+const MAXIMUM_BODY_BYTES = 16_384;
+
+async function readJsonBody(request) {
+  const chunks = [];
+  let bytes = 0;
+  for await (const chunk of request) {
+    bytes += chunk.length;
+    if (bytes > MAXIMUM_BODY_BYTES) throw new HttpError(413, 'The request body is too large.');
+    chunks.push(chunk);
+  }
+  if (bytes === 0) return {};
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw new HttpError(400, 'The request body must be JSON.');
+  }
 }
 
 function writeHtml(response, statusCode, body) {
@@ -429,20 +458,36 @@ async function handleHttp(request, response) {
   const requestUrl = new URL(request.url, dashboardUrl);
   try {
     const workSessionPrefix = '/api/work-sessions/';
-    if (request.method === 'DELETE' && requestUrl.pathname.startsWith(workSessionPrefix)) {
+    if (requestUrl.pathname.startsWith(workSessionPrefix)) {
       const workSessionId = decodeURIComponent(requestUrl.pathname.slice(workSessionPrefix.length));
       if (!workSessionId || workSessionId.includes('/')) {
-        return writeJson(response, 400, { error: 'Provide one work-session id to delete.' });
+        return writeJson(response, 400, { error: 'Provide one work-session id.' });
       }
-      const deletedWorkSession = await store.deleteWorkSession(workSessionId);
-      if (!deletedWorkSession) return writeJson(response, 404, { error: 'Work session not found.' });
-      return writeJson(response, 200, {
-        dashboardUrl,
-        deletedWorkSession: { id: deletedWorkSession.id, title: deletedWorkSession.title },
-      });
+      if (request.method === 'DELETE') {
+        const deletedWorkSession = await store.deleteWorkSession(workSessionId);
+        if (!deletedWorkSession) return writeJson(response, 404, { error: 'Work session not found.' });
+        return writeJson(response, 200, {
+          dashboardUrl,
+          deletedWorkSession: { id: deletedWorkSession.id, title: deletedWorkSession.title },
+        });
+      }
+      // The human moving a card by hand. The page is the only caller: an agent reports its status
+      // through the MCP tools, and this endpoint deliberately cannot touch any of them.
+      if (request.method === 'PATCH') {
+        const body = await readJsonBody(request);
+        if (!body || typeof body !== 'object' || Array.isArray(body) || !Object.hasOwn(body, 'lane')) {
+          throw new HttpError(400, 'Provide {"lane":"<lane>"} to place the card, or {"lane":null} to return it to its agents.');
+        }
+        if (body.lane !== null && !LANES.includes(body.lane)) {
+          throw new HttpError(400, `No lane is named ${JSON.stringify(body.lane)}. Use one of ${LANES.join(', ')}, or null.`);
+        }
+        const workSession = await store.setLaneOverride(workSessionId, body.lane);
+        if (!workSession) return writeJson(response, 404, { error: 'Work session not found.' });
+        return writeJson(response, 200, { dashboardUrl, workSession: sessionOverview(workSession) });
+      }
     }
     if (request.method !== 'GET') {
-      writeJson(response, 405, { error: 'Only GET is supported by the local dashboard.' });
+      writeJson(response, 405, { error: 'The local dashboard answers GET here; a work session can also be deleted or moved.' });
       return;
     }
     if (requestUrl.pathname === '/') return serveStatic(response, 'index.html', 'text/html; charset=utf-8');
@@ -473,6 +518,7 @@ async function handleHttp(request, response) {
     }
     return writeJson(response, 404, { error: 'Not found.' });
   } catch (error) {
+    if (error instanceof HttpError) return writeJson(response, error.statusCode, { error: error.message });
     process.stderr.write(`[agent-dashboard] ${error.message}\n`);
     return writeJson(response, 500, { error: 'The dashboard could not complete that request.' });
   }

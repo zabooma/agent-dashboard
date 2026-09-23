@@ -156,7 +156,7 @@
     <template id="session-card-template">
       <article class="session-card">
         <button class="card-main" type="button">
-          <div class="card-topline"><div class="card-flags"><span class="status-chip"></span><span class="stall-chip" hidden>Stalled</span><span class="new-badge" hidden>New</span></div><time></time></div>
+          <div class="card-topline"><div class="card-flags"><span class="status-chip"></span><span class="stall-chip" hidden>Stalled</span><span class="moved-chip" hidden>Moved by you</span><span class="new-badge" hidden>New</span></div><time></time></div>
           <p class="issue-label"></p>
           <h3></h3>
         </button>
@@ -168,11 +168,16 @@
           </section>
         </div>
         <button class="card-collapse" type="button" aria-expanded="true"><span aria-hidden="true">▾</span><span class="visually-hidden">Collapse card</span></button>
-        <div class="card-footer"><span class="next-action"></span><div class="card-actions"><a class="open-link" href="#">Open ↗</a><button class="delete-session" type="button">Delete</button></div></div>
+        <div class="card-footer"><span class="next-action"></span><div class="card-actions"><button class="move-session" type="button" aria-expanded="false">Move</button><a class="open-link" href="#">Open ↗</a><button class="delete-session" type="button">Delete</button></div></div>
+        <section class="card-move" hidden>
+          <p class="card-move-label">Move this card to</p>
+          <div class="card-move-lanes"></div>
+          <button class="card-move-reset" type="button" hidden>Return to the agents</button>
+        </section>
       </article>
     </template>
 
-    <script type="module" src="/app.js?v=5"></script>
+    <script type="module" src="/app.js?v=6"></script>
     <script>
       // Every card is drawn by the module above, so if that module never runs — a missing file, a
       // syntax error, or a dashboard process older than this page — the lanes stay empty and all the
